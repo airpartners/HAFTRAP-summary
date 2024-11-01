@@ -1,0 +1,8 @@
+# R Studio Meta Stuff
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Folder for raw data
+data/

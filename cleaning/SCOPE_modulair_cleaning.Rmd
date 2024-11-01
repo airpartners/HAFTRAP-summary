@@ -1,0 +1,55 @@
+# Modulair Data Cleaning
+This file is to clean the Modulair Data for SCOPE deployments
+
+## Load Libraries
+```{r}
+library(tidyverse)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read data
+```{r}
+path_to_data <- "data/SCOPE/"
+
+# All deployments
+deployment_ids <- 1:4
+
+# All columns
+col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2")
+```
+
+```{r, show_col_types = FALSE}
+# Initialize dataframe for all data
+all_df <- data.frame()
+
+# Loop through each deployment, read data
+for (deployment in deployment_ids) {
+  path <- paste0(path_to_data, "deployment_", deployment)
+  # Read indoor data
+  indoor <- read_csv(paste(path, "MOD_indoor.csv", sep = "/")) %>%
+    select(col_list) %>% mutate(environment = "indoor")
+  
+  # Read outdoor data
+  outdoor <- read_csv(paste(path, "MOD_outdoor.csv", sep = "/")) %>%
+    select(col_list) %>% mutate(environment = "outdoor")
+  
+  # Combine indoor and outdoor data, inserting deployment ID
+  joined <- rbind(indoor, outdoor) %>% mutate(dep_id = deployment)
+  
+  all_df <- rbind(all_df, joined)
+}
+```
+
