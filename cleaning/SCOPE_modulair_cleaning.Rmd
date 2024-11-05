@@ -22,7 +22,7 @@ if (!endsWith(getwd(), working_dir)) {
 
 ## Read data
 ```{r}
-path_to_data <- "data/SCOPE/"
+path_to_data <- "data_raw/SCOPE/"
 
 # All deployments
 deployment_ids <- 1:4
@@ -31,19 +31,19 @@ deployment_ids <- 1:4
 col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2")
 ```
 
-```{r, show_col_types = FALSE}
+```{r}
 # Initialize dataframe for all data
 all_df <- data.frame()
 
 # Loop through each deployment, read data
 for (deployment in deployment_ids) {
-  path <- paste0(path_to_data, "deployment_", deployment)
+  path <- paste0(path_to_data, "deployment_", deployment, "/")
   # Read indoor data
-  indoor <- read_csv(paste(path, "MOD_indoor.csv", sep = "/")) %>%
+  indoor <- read_csv(paste0(path, "MOD_indoor.csv"), show_col_types = FALSE) %>%
     select(col_list) %>% mutate(environment = "indoor")
   
   # Read outdoor data
-  outdoor <- read_csv(paste(path, "MOD_outdoor.csv", sep = "/")) %>%
+  outdoor <- read_csv(paste0(path, "MOD_outdoor.csv"), show_col_types = FALSE) %>%
     select(col_list) %>% mutate(environment = "outdoor")
   
   # Combine indoor and outdoor data, inserting deployment ID
@@ -51,5 +51,102 @@ for (deployment in deployment_ids) {
   
   all_df <- rbind(all_df, joined)
 }
+```
+
+
+## Assign case
+Each air quality reading was either when the purifier was running, not running, or outside the study period. The following section reformats the field notes to filter out the timestamps and label purifier case by deployment accordingly.
+### Get purifier off/on lookup table
+```{r}
+# Read field notes, skipping empty top row
+time_map <- read_csv(paste0(path_to_data, "SCOPE_field_notes.csv"), skip = 1)
+
+# Read out first leg of all deployments
+run_1 <- time_map %>% 
+  select("Deployment #", "Start", "Status...3", "Change") %>%
+  rename("dt_start" = "Start", "case" = "Status...3", "dt_end" = "Change")
+
+# Read out second leg of all deployments
+run_2 <- time_map %>% 
+  select("Deployment #", "Change", "Status...5", "End") %>%
+  rename("dt_start" = "Change", "case" = "Status...5", "dt_end" = "End")
+
+# Join them, converting dates to datetime format
+rbind(run_1, run_2) %>% 
+  rename("dep_id" = "Deployment #") %>%
+  mutate(across(c(dt_start, dt_end), ~as.POSIXct(.x, 
+                                                 format = "%m/%d/%Y %I:%M %p",
+                                                 tz = "America/New_York"))) %>%
+  mutate(case = gsub("HEPA ", "", case)) -> time_map
+```
+
+### Helper function
+```{r}
+# Filter timestamps and include whether hepa purifier is on or off
+include_case <- function(df, deployment) {
+  # Filter by current deployment
+  cd <- time_map %>% filter(dep_id == deployment)
+  
+  df %>%
+    # Select current deployment
+    filter(dep_id == deployment) %>%
+    # Add case column
+    mutate(case = case_when(
+      # For off periods
+      # Note: 'cd' is the table 'current_dates' in function call
+      between(timestamp, cd$dt_start[cd$case == "off"], 
+              cd$dt_end[cd$case == "off"]) ~ 'off',
+      # For on periods
+      between(timestamp, cd$dt_start[cd$case == "on"], 
+              cd$dt_end[cd$case == "on"]) ~ 'on'))
+}
+```
+
+### Assign case for each deployment
+```{r}
+case_df <- data.frame()
+
+for (deployment in deployment_ids) {
+  # Filter by date for off and on (see helper function)
+  df <- include_case(all_df, deployment)
+  # Append to overall dataframe, removing readings from invalid times
+  case_df <- rbind(case_df, df) %>% drop_na()
+}
+```
+
+## Compute indoor-outdoor ratios
+```{r}
+# Prepare dataframe to calculate ratios
+df_wide <- case_df %>% 
+  # Round timestamps to nearest minute, rename column to date (for plotting)
+  mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
+  # Remove repeat readings
+  distinct(case, dep_id, date, environment, .keep_all = TRUE) %>%
+  # Stretch dataframe to separate indoor and outdoor readings
+  pivot_wider(names_from = environment, values_from = pm1:no2) 
+```
+
+Compute ratios
+```{r}
+df_ratio <- select(df_wide, ends_with("indoor"))/
+    select(df_wide, ends_with("outdoor"))
+
+# Rename computed columns
+colnames(df_ratio) <- sub("_indoor", "_ratio", colnames(df_ratio))
+
+# Add ratios to dataframe and reshape to original format
+modulair_df <- df_wide %>%
+  # Add ratio
+  cbind(df_ratio) %>%
+  # Reshape, delimiter is _
+  pivot_longer(pm1_indoor:no2_ratio, names_to = c(".value", "environment"), 
+               names_pattern = "(.*)_(.*)") %>%
+  # Drop NAs to have clean data
+  drop_na()
+```
+
+# Save Data
+```{r}
+save(main_df, file = "cleaning/cleaned_SCOPE_modulair.RData")
 ```
 
