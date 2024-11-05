@@ -147,6 +147,6 @@ modulair_df <- df_wide %>%
 
 # Save Data
 ```{r}
-save(main_df, file = "cleaning/cleaned_SCOPE_modulair.RData")
+save(modulair_df, file = "data_cleaned/cleaned_SCOPE_modulair.RData")
 ```
 
