@@ -1,0 +1,61 @@
+# CPC Data Cleaning
+This file is to clean the CPC Data for SCOPE deployments
+
+## Load Libraries
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read data
+```{r}
+path_to_data <- "data_raw/SCOPE/"
+
+# All deployments
+deployment_ids <- 1:4
+```
+
+```{r}
+# List all raw CPC data files in SCOPE data
+all_files <- list.files(path = path_to_data, recursive = TRUE)
+cpc_files <- grep("cpc_data", all_files, value = TRUE)
+```
+
+```{r}
+all_df <- data.frame()
+
+for (cpc_file in cpc_files) {
+  # File path
+  file_path = paste0(path_to_data, cpc_file)
+  
+  # Get file metadata
+  file_info <- file.info(file_path)
+  
+  # Skip empty files
+  if(file_info$size > 500) {
+    # Get deployment ID from file path
+    deployment = as.integer(substr(cpc_file, 12, 12))
+    
+    # Read file into dataframe, adding deployment ID
+    df <- fread(file_path, header = TRUE, skip = 13, 
+                select = c(1, 2, 4, 11, 12, 21)) %>% mutate(dep_id = deployment)
+    
+    # Combine with overall dataframe
+    all_df <- rbind(all_df, df)
+  }
+}
+```
