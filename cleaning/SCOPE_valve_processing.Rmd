@@ -1,0 +1,58 @@
+## Valve switching data processing
+
+
+## Load Libraries
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read data
+```{r}
+path_to_data <- "data_raw/SCOPE/valve_data/"
+```
+
+```{r}
+
+```
+
+## Clean data
+```{r}
+env_df <- data.frame()
+for (deployment in 1:4) {
+  valve_data <- fread(paste0(path_to_data, "D", deployment, "_valves.txt"))
+  
+  valve_data %>%
+    mutate(datetime = as.POSIXct(datetime, format = "%m/%d/%Y %H:%M:%S",
+                             tz = "America/New_York")) %>%
+    complete(datetime = seq(min(datetime), max(datetime), by = 1)) %>%
+    fill(command_alias) %>%
+    select(datetime, command_alias) %>%
+    mutate(dep_id = deployment) -> valve_data_filled
+  
+  env_df <- rbind(env_df, valve_data_filled)
+}
+```
+
+## Format and download
+```{r}
+# Small formatting change - remove "s" from command_alias and save as CSV
+env_df %>%
+  mutate(environment = gsub( "s", "", command_alias), .keep = "unused") %>%
+  write_csv(paste0(path_to_data, "valve_combined.csv"))
+```
+
