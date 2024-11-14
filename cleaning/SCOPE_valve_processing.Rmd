@@ -21,27 +21,38 @@ if (!endsWith(getwd(), working_dir)) {
 }
 ```
 
-## Read data
+## Read and clean data
 ```{r}
 path_to_data <- "data_raw/SCOPE/valve_data/"
 ```
 
 ```{r}
-
-```
-
-## Clean data
-```{r}
 env_df <- data.frame()
 for (deployment in 1:4) {
+  # Read text file of each deployment
   valve_data <- fread(paste0(path_to_data, "D", deployment, "_valves.txt"))
   
-  valve_data %>%
+  # Clean data
+  valve_data_clean <- valve_data %>%
     mutate(datetime = as.POSIXct(datetime, format = "%m/%d/%Y %H:%M:%S",
                              tz = "America/New_York")) %>%
+    select(datetime, command_alias)
+  
+  # # NA first 10 seconds of all valve switches:
+  # Copy data and add 10 seconds to timestamp
+  valve_data_plus_10 <- valve_data_clean %>% mutate(datetime = datetime + 10)
+  # Copy same data and NA all values
+  valve_data_na <- valve_data_clean %>% mutate(command_alias = "switch_discard")
+  
+  # Bind the two dataframes and arrange in ascending order
+  rbind(valve_data_na, valve_data_plus_10) %>%
+    arrange(datetime) %>%
+    # "Complete" the times between valve switches with empty rows for each second
     complete(datetime = seq(min(datetime), max(datetime), by = 1)) %>%
+    # Fill in the empty rows with the alias at the top of the period
+    # Note: initial ten seconds of each valve switch are to be discarded
     fill(command_alias) %>%
-    select(datetime, command_alias) %>%
+    # Insert deployment ID
     mutate(dep_id = deployment) -> valve_data_filled
   
   env_df <- rbind(env_df, valve_data_filled)
@@ -50,9 +61,14 @@ for (deployment in 1:4) {
 
 ## Format and download
 ```{r}
-# Small formatting change - remove "s" from command_alias and save as CSV
-env_df %>%
-  mutate(environment = gsub( "s", "", command_alias), .keep = "unused") %>%
-  write_csv(paste0(path_to_data, "valve_combined.csv"))
+# Convert to "switch_discard" to NA, rename to environment, remove "s"
+clean_env_df <- env_df %>%
+  mutate(environment = na_if(command_alias, "switch_discard"), .keep = "unused") %>%
+  mutate(environment = gsub( "s", "", environment))
+```
+
+```{r}
+# Save to CSV
+write_csv(clean_env_df, paste0(path_to_data, "valve_combined.csv"))
 ```
 

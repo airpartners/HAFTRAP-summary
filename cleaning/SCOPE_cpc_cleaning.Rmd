@@ -36,6 +36,7 @@ cpc_files <- grep("cpc_data", all_files, value = TRUE)
 ```
 
 ```{r}
+# Read all CPC files
 all_df <- data.frame()
 
 for (cpc_file in cpc_files) {
@@ -52,10 +53,118 @@ for (cpc_file in cpc_files) {
     
     # Read file into dataframe, adding deployment ID
     df <- fread(file_path, header = TRUE, skip = 13, 
-                select = c(1, 2, 4, 11, 12, 21)) %>% mutate(dep_id = deployment)
+                select = c(1, 2, 4, 11, 12, 20, 21)) %>% mutate(dep_id = deployment)
     
     # Combine with overall dataframe
     all_df <- rbind(all_df, df)
   }
 }
+```
+
+## Add environment to data
+The CPC was connected to a valve that switched between indoor and outdoor at regular intervals. This section retrieves the processed valve-switching data and merges it with the CPC data.
+```{r}
+# Warning: this code chunk may seem simple but takes FOREVER.
+# Have patience. It deals with datetimes.
+merged_date_df <- all_df %>%
+  # Merge the date and time column
+  unite(col = "date", `#YY/MM/DD`, `HR:MN:SC`, sep = " ") %>%
+  # Convert to datetime object
+  mutate(date = as.POSIXct(date, format = "%y/%m/%d %H:%M:%S", 
+                           tz = "America/New_York"))
+```
+
+Load environment data from valve switching
+```{r}
+# This file was created by `SCOPE_valve_processing.Rmd`
+env_df <- read_csv(paste0(path_to_data, "valve_data/valve_combined.csv"))
+```
+Merge CPC and valve switching (environment) data
+```{r}
+include_env_df <- merged_date_df %>%
+  inner_join(env_df, by = join_by(date == datetime, dep_id))
+```
+
+## Assign case
+Each air quality reading was either when the purifier was running, not running, or outside the study period. The following section reformats the field notes to filter out the timestamps and label purifier case by deployment accordingly.
+### Get purifier off/on lookup table
+```{r}
+# Read field notes, skipping empty top row
+time_map <- read_csv(paste0(path_to_data, "SCOPE_field_notes.csv"), skip = 1)
+
+# Read out first leg of all deployments
+run_1 <- time_map %>% 
+  select("Deployment #", "Start", "Status...3", "Change") %>%
+  rename("dt_start" = "Start", "case" = "Status...3", "dt_end" = "Change")
+
+# Read out second leg of all deployments
+run_2 <- time_map %>% 
+  select("Deployment #", "Change", "Status...5", "End") %>%
+  rename("dt_start" = "Change", "case" = "Status...5", "dt_end" = "End")
+
+# Join them, converting dates to datetime format
+rbind(run_1, run_2) %>% 
+  rename("dep_id" = "Deployment #") %>%
+  mutate(across(c(dt_start, dt_end), ~as.POSIXct(.x, 
+                                                 format = "%m/%d/%Y %I:%M %p",
+                                                 tz = "America/New_York"))) %>%
+  mutate(case = gsub("HEPA ", "", case)) -> time_map
+```
+
+### Helper function
+```{r}
+# Filter timestamps and include whether hepa purifier is on or off
+include_case <- function(df, deployment) {
+  # Filter by current deployment
+  cd <- time_map %>% filter(dep_id == deployment)
+  
+  df %>%
+    # Select current deployment
+    filter(dep_id == deployment) %>%
+    # Add case column
+    mutate(case = case_when(
+      # For off periods
+      # Note: 'cd' is the table 'current_dates' in function call
+      between(date, cd$dt_start[cd$case == "off"], 
+              cd$dt_end[cd$case == "off"]) ~ 'off',
+      # For on periods
+      between(date, cd$dt_start[cd$case == "on"], 
+              cd$dt_end[cd$case == "on"]) ~ 'on'))
+}
+```
+
+### Assign case for each deployment
+```{r}
+case_df <- data.frame()
+
+for (deployment in deployment_ids) {
+  # Filter by date for off and on (see helper function)
+  df <- include_case(include_env_df, deployment)
+  # Append to overall dataframe, removing readings from invalid times
+  case_df <- rbind(case_df, df) %>% drop_na()
+}
+```
+
+## Clean data
+```{r}
+clean_df <- case_df %>%
+  # Pump flow needs to be greater than 250 for proper functioning
+  filter(smpflow > 250) %>%
+  # Drop pump flow variable
+  select(-smpflow) %>%
+  # Fill count has to be zero for correct data collection
+  filter(fillcnt == 0) %>%
+  # Drop pump flow variable
+  select(-fillcnt) %>%
+  # Error numeber has to be zero for correct data collection
+  filter(err_num == 0) %>%
+  # Drop pump flow variable
+  select(-err_num) %>%
+  # Filter out concent values that are < 100 (this can never be true IRL)
+  filter(concent > 100) %>%
+  # Remove repeat readings
+  distinct(dep_id, date, environment, .keep_all = TRUE) %>%
+  # Remove all filtered-out values
+  drop_na()
+  
 ```
