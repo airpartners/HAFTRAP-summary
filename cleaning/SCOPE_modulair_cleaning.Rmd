@@ -145,6 +145,18 @@ modulair_df <- df_wide %>%
   drop_na()
 ```
 
+## Replace deployment IDs with participant IDs
+For anonymization and consistency
+```{r}
+dep_part_mapping <- read_csv(paste0(path_to_data, "dep_to_part_id.csv"))
+```
+
+```{r}
+modulair_df <- modulair_df %>% 
+  left_join(dep_part_mapping, by = join_by(dep_id == deployment_id)) %>%
+  select(-dep_id)
+```
+
 # Save Data
 ```{r}
 save(modulair_df, file = "data_cleaned/cleaned_SCOPE_modulair.RData")

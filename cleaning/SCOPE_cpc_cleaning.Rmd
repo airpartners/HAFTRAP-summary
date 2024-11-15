@@ -227,6 +227,20 @@ ratio_df <- ratio_df %>% mutate(environment = "ratio") %>% drop_na()
 cpc_df <- rbind(clean_df, ratio_df)
 ```
 
+## Replace deployment IDs with participant IDs
+For anonymization and consistency
+```{r}
+dep_part_mapping <- read_csv(paste0(path_to_data, "dep_to_part_id.csv"))
+```
+
+```{r}
+cpc_df <- cpc_df %>% 
+  left_join(dep_part_mapping, by = join_by(dep_id == deployment_id)) %>%
+  select(-dep_id)
+```
+
+
+
 # Save data
 ```{r}
 save(cpc_df, file = "data_cleaned/cleaned_SCOPE_cpc.RData")

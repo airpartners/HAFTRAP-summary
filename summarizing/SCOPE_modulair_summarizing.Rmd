@@ -49,23 +49,23 @@ my_summarise <- function(main_df, groups) {
 ```{r}
 modulair_df_long <- modulair_df %>%
   # Gather dataframe to create single variable for measurements
-  pivot_longer(!c(date, environment, dep_id, case), 
+  pivot_longer(!c(date, environment, participant_id, case), 
                names_to = "p_type", values_to = "reading") %>%
   # Drop NaN, inf values for summary calculation
   filter(is.finite(reading)) 
 
-# Calculate summary statistics for each deployment
-deployment_summary <- modulair_df_long %>%
-  my_summarise(c("dep_id", "case", "environment", "p_type"))
+# Calculate summary statistics for each participant
+participant_summary <- modulair_df_long %>%
+  my_summarise(c("participant_id", "case", "environment", "p_type"))
   
 # Calculate summary statistics over all the data
 overall_summary <- modulair_df_long %>%
   my_summarise(c("case", "environment", "p_type")) %>%
-  # Add deployment ID column as 'all'
-  mutate(dep_id = "all")
+  # Add participant ID column as 'all'
+  mutate(participant_id = "all")
 
-# Bind together deployment and overall summary statistics
-summary <- rbind(deployment_summary, overall_summary)
+# Bind together participant and overall summary statistics
+summary <- rbind(participant_summary, overall_summary)
 ```
 
 ### Calculate percentage reduction in concentration from no HEPA to HEPA
@@ -81,9 +81,9 @@ summary_redu <- 100*(select(summary_wide, ends_with("off")) -
 # Remove (now incorrect) "off" suffix for percentage reduction
 colnames(summary_redu) <- sub("_off", "", colnames(summary_redu))
 
-# Add dep_id, environment, p_type, to redu dataframe 
+# Add participant_id, environment, p_type, to redu dataframe 
 summary_redu <- summary_wide %>%
-  select(dep_id, environment, p_type) %>%
+  select(participant_id, environment, p_type) %>%
   cbind(summary_redu)
 ```
 
