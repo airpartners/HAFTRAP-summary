@@ -164,7 +164,65 @@ clean_df <- case_df %>%
   filter(concent > 100) %>%
   # Remove repeat readings
   distinct(dep_id, date, environment, .keep_all = TRUE) %>%
+  # Drop temperature values (since not required for now)
+  select(-inlttmp) %>%
   # Remove all filtered-out values
   drop_na()
   
 ```
+
+
+```{r}
+ratio_df <- data.frame()
+for (deployment in deployment_ids) {
+  with_section <- clean_df %>%
+    filter(dep_id == deployment) %>%
+    mutate(section = cumsum(environment != lag(environment, default = "")))
+  
+  if (with_section$environment[1] == "indoor") {
+    with_section <- with_section %>% filter(section > 1)
+  }  else {
+    with_section <- with_section %>% mutate(section = section + 1)
+  }
+  
+  # Make indoor-outdoor pair
+  with_section <- with_section %>% mutate(section = section %/% 2)
+  
+  # Get the starting timestamp and case of each section, for later
+  start_timestamp <- with_section %>%
+    group_by(section) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(section, date, case)
+  
+  # Calculate mean indoor and outdoor per section, and then calculate ratio 
+  ratio_by_dep <- with_section %>%
+    # Calculate mean for each section
+    group_by(section, environment) %>%
+    summarize(concent = mean(concent), .groups = "drop") %>%
+    # Calculate indoor-outdoor ratio
+    pivot_wider(names_from = environment, values_from = concent) %>%
+    mutate(ratio = indoor/outdoor, .keep = "unused") %>%
+    # Rename to variable name to match with original
+    rename(concent = ratio) %>%
+    # Add in timestamps to sync with section, and drop section
+    inner_join(start_timestamp, by = join_by(section)) %>% 
+    select(-section) %>%
+    mutate(dep_id = deployment)
+    
+  ratio_df <- rbind(ratio_df, ratio_by_dep)
+}
+
+ratio_df <- ratio_df %>% mutate(environment = "ratio") %>% drop_na()
+```
+
+```{r}
+# Append the ratio data to the raw data
+cpc_df <- rbind(clean_df, ratio_df)
+```
+
+# Save data
+```{r}
+save(cpc_df, file = "data_cleaned/cleaned_SCOPE_cpc.RData")
+```
+
