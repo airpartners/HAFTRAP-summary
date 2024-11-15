@@ -171,21 +171,27 @@ clean_df <- case_df %>%
   
 ```
 
-
+## Calculate indoor-outdoor ratios
+Since there is no concurrent indoor and outdoor data, ratios are calculated over the average of indoor and outdoor values in one valve switch cycle. The cycle starts with outdoor to help account for infiltration effects.
 ```{r}
 ratio_df <- data.frame()
+
+# Calculate by deployment ID
 for (deployment in deployment_ids) {
+  # Create section variable that increments every time the environment switches
   with_section <- clean_df %>%
     filter(dep_id == deployment) %>%
     mutate(section = cumsum(environment != lag(environment, default = "")))
   
+  # Ensure cycle starts with outdoor - if start indoor, filter out the top section
   if (with_section$environment[1] == "indoor") {
     with_section <- with_section %>% filter(section > 1)
+    # If start outdoor, increment by 1 to match previous if case (for floor division)
   }  else {
     with_section <- with_section %>% mutate(section = section + 1)
   }
   
-  # Make indoor-outdoor pair
+  # Make indoor-outdoor pair by floor dividing 
   with_section <- with_section %>% mutate(section = section %/% 2)
   
   # Get the starting timestamp and case of each section, for later
