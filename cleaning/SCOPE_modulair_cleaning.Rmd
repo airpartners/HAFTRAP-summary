@@ -28,7 +28,7 @@ path_to_data <- "data_raw/SCOPE/"
 deployment_ids <- 1:4
 
 # All columns
-col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2")
+col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2", "bin0", "bin1", "bin2")
 ```
 
 ```{r}
@@ -44,7 +44,7 @@ for (deployment in deployment_ids) {
   
   # Read outdoor data
   outdoor <- read_csv(paste0(path, "MOD_outdoor.csv"), show_col_types = FALSE) %>%
-    select(col_list) %>% mutate(environment = "outdoor")
+    select(all_of(col_list)) %>% mutate(environment = "outdoor")
   
   # Combine indoor and outdoor data, inserting deployment ID
   joined <- rbind(indoor, outdoor) %>% mutate(dep_id = deployment)
@@ -71,12 +71,14 @@ run_2 <- time_map %>%
   select("Deployment #", "Change", "Status...5", "End") %>%
   rename("dt_start" = "Change", "case" = "Status...5", "dt_end" = "End")
 
-# Join them, converting dates to datetime format
+# Join them
 rbind(run_1, run_2) %>% 
   rename("dep_id" = "Deployment #") %>%
+  # Convert dates to datetime format
   mutate(across(c(dt_start, dt_end), ~as.POSIXct(.x, 
                                                  format = "%m/%d/%Y %I:%M %p",
                                                  tz = "America/New_York"))) %>%
+  # Remove redundant "HEPA" keyword from case
   mutate(case = gsub("HEPA ", "", case)) -> time_map
 ```
 
@@ -114,33 +116,44 @@ for (deployment in deployment_ids) {
 }
 ```
 
+## Compute PM1 Number Count
+Additionally clean data a bit for future
+```{r}
+clean_df <- case_df %>% mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>% 
+  # Round timestamps to nearest minute, rename column to date
+  mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
+  # Remove repeat readings
+  distinct(case, dep_id, date, environment, .keep_all = TRUE)
+```
+
 ## Compute indoor-outdoor ratios
 ```{r}
 # Prepare dataframe to calculate ratios
-df_wide <- case_df %>% 
-  # Round timestamps to nearest minute, rename column to date (for plotting)
-  mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
-  # Remove repeat readings
-  distinct(case, dep_id, date, environment, .keep_all = TRUE) %>%
+df_wide <- clean_df %>% 
   # Stretch dataframe to separate indoor and outdoor readings
-  pivot_wider(names_from = environment, values_from = pm1:no2) 
+  pivot_wider(names_from = environment, values_from = c(pm1, pm25, pm10, pm1num,
+                                                        no, co, no2)) %>%
+  drop_na()
 ```
 
 Compute ratios
 ```{r}
-df_ratio <- select(df_wide, ends_with("indoor"))/
-    select(df_wide, ends_with("outdoor"))
+# Calculate indoor-outdoor ratio for each measure
+df_ratio <- df_wide %>% 
+  mutate(environment = "ratio",
+         pm1 = pm1_indoor/pm1_outdoor, 
+         pm25 = pm25_indoor/pm25_outdoor, 
+         pm10 = pm10_indoor/pm10_outdoor, 
+         pm1num = pm1num_indoor/pm1num_outdoor,
+         co = co_indoor/co_outdoor,
+         no = no_indoor/no_outdoor,
+         no2 = no2_indoor/no2_outdoor,
+         .keep = "unused")
 
-# Rename computed columns
-colnames(df_ratio) <- sub("_indoor", "_ratio", colnames(df_ratio))
-
-# Add ratios to dataframe and reshape to original format
-modulair_df <- df_wide %>%
+# Add ratios to dataframe
+modulair_df <- clean_df %>%
   # Add ratio
-  cbind(df_ratio) %>%
-  # Reshape, delimiter is _
-  pivot_longer(pm1_indoor:no2_ratio, names_to = c(".value", "environment"), 
-               names_pattern = "(.*)_(.*)") %>%
+  rbind(df_ratio) %>%
   # Drop NAs to have clean data
   drop_na()
 ```
