@@ -1,0 +1,144 @@
+# Modulair-PM Data Cleaning
+This file is to clean the Modulair-PM Data for Olin deployments
+
+## Load Libraries
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read Data
+```{r}
+path_to_data <- "data_raw/Olin/modpm/"
+
+# All columns
+col_list <- c("timestamp", "pm1", "pm25", "pm10", "bin0", "bin1", "bin2")
+```
+
+```{r}
+# List all Mod-PM data files in Olin data
+modpm_files <- list.files(path = path_to_data, recursive = TRUE)
+```
+
+## Read data
+```{r}
+# Initialize dataframe for all data
+all_df <- data.frame()
+
+# Loop through each deployment, read data
+for (file_name in modpm_files) {
+  # Split filename into its relevant parts
+  file_parts <- str_split(file_name, "_")[[1]]
+  
+  # Read CSV, adding columns for participant ID, case, environment from filename
+  df <- read_csv(paste0(path_to_data, file_name), show_col_types = FALSE) %>% 
+    select(all_of(col_list)) %>%
+    mutate(participant_id = as.numeric(file_parts[3]),
+           case = file_parts[4],
+           environment = str_remove(file_parts[5], ".csv"))
+  
+  # Bind df to overall df
+  all_df <- rbind(all_df, df)
+  
+  # Print that file is read
+  print(paste("Completed reading", file_name))
+}
+```
+
+## Time filtering
+The data is manually downloaded from Quant-AQ and is filtered to the nearest day. Filter to exact time of sensor installation recorded in field notes.
+```{r}
+# Read field notes, skipping top two rows
+time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") %>%
+  # Rename and select relevant columns
+  rename(participant_id = 1, 
+         dt_1_start = "Air Mon 1 Visit 1", dt_1_end = "Air Mon 1 Visit 2",
+         dt_2_start = "Air Mon 2 Visit 3", dt_2_end = "Air Mon 2 Visit 4") %>%
+  select(participant_id, starts_with("dt_")) %>%
+  # Convert timezone to Eastern Time
+  mutate(across(c(dt_1_start, dt_1_end, dt_2_start, dt_2_end), 
+                ~force_tz(.x, tzone = "America/New_York"))) %>%
+  # Convert participant ID to numeric, dropping invalid participants
+  mutate(participant_id = as.numeric(participant_id)) %>%
+  drop_na()
+```
+
+```{r}
+# Filter original dataframe to only include participants in the field notes
+all_df <- all_df %>% filter(participant_id %in% unique(time_map$participant_id))
+
+case_df <- data.frame()
+# Loop across list of Mod-PM participants with data downloaded
+for (participant in participant_list) {
+  # Filter for current participant
+  current_map <- time_map %>% filter(participant_id == participant)
+  
+  # Filter time periods in first monitoring stage
+  first_df <- all_df %>%
+    filter(participant_id == participant) %>%
+    filter(between(timestamp, current_map$dt_1_start, current_map$dt_1_end))
+  
+  # Filter time periods in second monitoring stage
+  second_df <- all_df %>%
+    filter(participant_id == participant) %>%
+    filter(between(timestamp, current_map$dt_2_start, current_map$dt_2_end))
+  
+  case_df <- rbind(case_df, first_df, second_df)
+}
+
+```
+## Compute PM1 Number Count
+Additionally clean data a bit for future
+```{r}
+clean_df <- case_df %>% mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>% 
+  # Round timestamps to nearest minute, rename column to date
+  mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
+  # Remove repeat readings
+  distinct(case, participant_id, date, environment, .keep_all = TRUE)
+```
+
+## Compute indoor-outdoor ratios
+```{r}
+# Prepare dataframe to calculate ratios
+df_wide <- clean_df %>%
+  # Stretch dataframe to separate indoor and outdoor readings
+  pivot_wider(names_from = environment, values_from = c(pm1, pm25, pm10, pm1num)) %>%
+  drop_na()
+```
+
+Compute ratios
+```{r}
+# Calculate indoor-outdoor ratio for each measure
+df_ratio <- df_wide %>%
+  mutate(environment = "ratio",
+         pm1 = pm1_indoor/pm1_outdoor, pm25 = pm25_indoor/pm25_outdoor, 
+         pm10 = pm10_indoor/pm10_outdoor, pm1num = pm1num_indoor/pm1num_outdoor,
+         .keep = "unused")
+
+# Add ratios to dataframe
+modpm_df <- clean_df %>%
+  # Add ratio
+  rbind(df_ratio) %>%
+  # Drop NAs to have clean data
+  drop_na()
+```
+
+# Save Data
+```{r}
+save(modpm_df, file = "data_cleaned/cleaned_Olin_modpm.RData")
+```
+
