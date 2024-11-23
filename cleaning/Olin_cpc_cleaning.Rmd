@@ -1,0 +1,212 @@
+# CPC Data Cleaning
+This file is to clean the CPC Data for Olin deployments
+
+## Load Libraries
+```{r}
+library(tidyverse)
+library(data.table)
+library(readxl)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read data
+```{r}
+path_to_data <- "data_raw/Olin/cpc/"
+```
+
+```{r}
+# List all raw CPC data files in Olin data, filtering out bad and irrelevant data
+cpc_files <- list.files(path = path_to_data, recursive = TRUE)
+cpc_files <- grep("Pre data|bad", cpc_files, value = TRUE, invert = TRUE)
+```
+
+```{r}
+# Read all CPC files - this takes a while (~ 10 min on my PC)
+all_df <- data.frame()
+
+for (cpc_file in cpc_files) {
+  # File path
+  file_path = paste0(path_to_data, cpc_file)
+  
+  # Get file metadata
+  file_info <- file.info(file_path)
+  
+  # Skip empty files
+  if(file_info$size > 500) {
+    cpc_file_parts <- str_split_1(cpc_file, "/")
+    
+    
+    # Get environment, participant ID from file path
+    env = cpc_file_parts[1]
+    participant = as.numeric(cpc_file_parts[2])
+
+    # Read file into dataframe
+    df <- fread(file_path, header = TRUE, skip = 13,
+                select = c(1, 2, 4, 11, 12, 21, 22)) %>%
+      # Merge the date and time column
+      unite(col = "date", `#YY/MM/DD`, `HR:MN:SC`, sep = " ") %>%
+      # Convert to datetime object and insert environment, participant ID
+      mutate(date = as.POSIXct(date, format = "%y/%m/%d %H:%M:%S", 
+                               tz = "America/New_York"),
+             environment = env, participant_id = participant)
+
+    # Combine with overall dataframe
+    all_df <- rbind(all_df, df)
+    
+    print(paste("Read", cpc_file))
+  }
+}
+```
+
+## Assign case
+The following section reformats the field notes to filter out the timestamps and label purifier case by participant accordingly.
+```{r}
+# CPC participants
+cpc_participants <- unique(all_df$participant_id)
+
+# Define lookup table to map "sham" and "hepa" to "off" and "on" respectively
+case_lookup <- c(Sham = "off", Hepa = "on")
+# Define table to invert the case for the second period
+case_inverse <- c(off = "on", on = "off")
+
+
+# Read field notes, skipping top two rows
+time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") %>%
+  # Rename and select relevant columns
+  rename(participant_id = 1, case_1 = "Filter",
+         dt_start_1 = "Air Mon 1 Visit 1", dt_end_1 = "Air Mon 1 Visit 2",
+         dt_start_2 = "Air Mon 2 Visit 3", dt_end_2 = "Air Mon 2 Visit 4") %>%
+  select(participant_id, case_1, starts_with("dt_")) %>%
+  # Convert timezone to Eastern Time
+  mutate(across(c(dt_start_1, dt_end_1, dt_start_2, dt_end_2), 
+                ~force_tz(.x, tzone = "America/New_York")), 
+         # Participant ID to numeric
+         participant_id = as.numeric(participant_id),
+         # Standardize case to on, off, invert the case in the second period
+         case_1 = case_lookup[case_1], case_2 = case_inverse[case_1]) %>%
+  # Filter for Modulair participants
+  filter(participant_id %in% cpc_participants) %>%
+  # Stretch to create case dataframe
+  pivot_longer(cols = -participant_id, names_to = c(".value"), names_pattern = "(.*)_.")
+```
+
+### Helper function
+```{r}
+# Filter timestamps and include whether hepa purifier is on or off
+include_case <- function(df, participant) {
+  # Filter by current participant
+  cd <- time_map %>% filter(participant_id == participant)
+  
+  df %>%
+    # Select current participant
+    filter(participant_id == participant) %>%
+    # Add case column
+    mutate(case = case_when(
+      # For off periods
+      # Note: 'cd' is the table 'current_dates' in function call
+      between(date, cd$dt_start[cd$case == "off"], 
+              cd$dt_end[cd$case == "off"]) ~ 'off',
+      # For on periods
+      between(date, cd$dt_start[cd$case == "on"], 
+              cd$dt_end[cd$case == "on"]) ~ 'on'))
+}
+```
+
+### Assign case for each participant
+```{r}
+case_df <- data.frame()
+
+for (participant in participant_ids) {
+  # Filter by date for off and on (see helper function)
+  df <- include_case(all_df, participant)
+  # Append to overall dataframe, removing readings from invalid times
+  case_df <- rbind(case_df, df) %>% drop_na()
+  print(paste("Assigned case to", participant))
+}
+```
+
+## Clean data
+```{r}
+clean_df <- case_df %>%
+  # Pump flow needs to be greater than 250 for proper functioning
+  filter(smpflow > 250) %>%
+  # Drop pump flow variable
+  select(-smpflow) %>%
+  # Fill count has to be zero for correct data collection
+  filter(fillcnt == 0) %>%
+  # Drop pump flow variable
+  select(-fillcnt) %>%
+  # Error number has to be zero for correct data collection
+  filter(err_num == 0) %>%
+  # Drop pump flow variable
+  select(-err_num) %>%
+  # Convert concent to float
+  mutate(concent = as.numeric(concent)) %>%
+  # Filter out concent values that are < 100 (this can never be true IRL)
+  filter(concent > 100) %>%
+  # Remove repeat readings
+  distinct(participant_id, date, environment, .keep_all = TRUE) %>%
+  # Drop temperature values (since not required for now)
+  select(-inlttmp) %>%
+  # Remove all filtered-out values
+  drop_na()
+  
+```
+
+## Compute indoor-outdoor ratios
+CPC ratios are calculated to nearest minute to match Modulair/Mod-PM resolution.
+```{r}
+# Prepare dataframe to calculate ratios - takes about a minute to run
+df_round <- clean_df %>%
+  # Round values to nearest minute and calculate mean
+  mutate(date_round = round_date(date, "1 minute")) %>%
+  # Group by the rounded datetime
+  group_by(case, environment, participant_id, date_round) %>%
+  # Calculate mean per minute
+  summarize(concent = mean(concent), .groups = "drop")
+
+```
+
+```{r}
+# Stretch dataframe to separate indoor and outdoor readings
+df_wide <- df_round %>%
+  pivot_wider(names_from = environment, values_from = concent) %>%
+  drop_na()
+```
+
+
+Compute ratios
+```{r}
+# Calculate indoor-outdoor ratio for each measure
+df_ratio <- df_wide %>%
+  mutate(environment = "ratio", concent = indoor/outdoor, .keep = "unused") %>%
+  rename(date = date_round)
+
+# Add ratios to dataframe
+cpc_df <- clean_df %>%
+  # Add ratio
+  rbind(df_ratio) %>%
+  # Drop NAs to have clean data
+  drop_na()
+```
+
+
+
+# Save data
+```{r}
+save(cpc_df, file = "data_cleaned/cleaned_Olin_cpc.RData")
+```
+
