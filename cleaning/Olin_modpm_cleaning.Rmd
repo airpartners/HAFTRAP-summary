@@ -104,9 +104,16 @@ for (participant in participant_list) {
 ## Compute PM1 Number Count
 Additionally clean data a bit for future
 ```{r}
-clean_df <- case_df %>% mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>% 
-  # Round timestamps to nearest minute, rename column to date
-  mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
+# Define lookup table to map "sham" and "hepa" to "off" and "on" respectively
+case_lookup <- c(sham = "off", hepa = "on")
+
+clean_df <- case_df %>% 
+  # Calculate PM1 Count
+  mutate(pm1num = bin0 + bin1 + bin2, 
+  # Substitute case to standardize
+  case = case_lookup[case],
+  # Round date to minute and drop unnecessary columns
+  date = round_date(timestamp, "minute"), .keep = "unused") %>%
   # Remove repeat readings
   distinct(case, participant_id, date, environment, .keep_all = TRUE)
 ```
