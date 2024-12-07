@@ -106,6 +106,8 @@ time_map <- read_excel("data_raw/Tufts/Tufts_field_notes_formatted.xlsx")
 Match sham and HEPA case to periods
 ```{r}
 case_df <- inner_join(clean_df, time_map, by = join_by(participant_id, period)) %>%
+  # Convert sham and hepa to off and on respectively, for standardization
+  mutate(case = case_when(case == "sham" ~ "off", case == "hepa" ~ "on")) %>%
   # Some post-processing - select relevant columns, drop invalid values
   select(date, participant_id, case, environment, concent) %>%
   drop_na()
