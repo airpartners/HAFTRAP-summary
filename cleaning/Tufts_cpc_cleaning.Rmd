@@ -84,3 +84,70 @@ for (cpc_file in cpc_files) {
   }
 }
 ```
+
+```{r}
+# Clean data by removing duplicates, filtering out failed or invalid scans
+clean_df <- all_df %>%
+  # Remove repeat readings
+  distinct(participant_id, date, environment, period, .keep_all = TRUE) %>%
+  # Rename relevant columns to be more descriptive
+  rename(concent = Concentration, cpc_count = Count, status_flag = `Status Flags`) %>%
+  # Status flag of 0 is successful scan - filter out all others, as well as invalid data
+  filter(status_flag == "0", concent > 100)
+```
+
+
+Table mapping periods to sham or HEPA case
+```{r}
+# Read summary table of times
+time_map <- read_excel("data_raw/Tufts/Tufts_field_notes_formatted.xlsx")
+```
+
+Match sham and HEPA case to periods
+```{r}
+case_df <- inner_join(clean_df, time_map, by = join_by(participant_id, period)) %>%
+  # Some post-processing - select relevant columns, drop invalid values
+  select(date, participant_id, case, environment, concent) %>%
+  drop_na()
+```
+
+## Compute indoor-outdoor ratios
+CPC ratios are calculated to nearest minute to match Modulair/Mod-PM resolution.
+```{r}
+# Prepare dataframe to calculate ratios - takes about a minute to run
+df_round <- case_df %>%
+  # Round values to nearest minute and calculate mean
+  mutate(date_round = round_date(date, "1 minute")) %>%
+  # Group by the rounded datetime
+  group_by(case, environment, participant_id, date_round) %>%
+  # Calculate mean per minute
+  summarize(concent = mean(concent), .groups = "drop")
+```
+
+```{r}
+# Stretch dataframe to separate indoor and outdoor readings
+df_wide <- df_round %>%
+  pivot_wider(names_from = environment, values_from = concent) %>%
+  drop_na()
+```
+
+
+Compute ratios
+```{r}
+# Calculate indoor-outdoor ratio for each measure
+df_ratio <- df_wide %>%
+  mutate(environment = "ratio", concent = indoor/outdoor, .keep = "unused") %>%
+  rename(date = date_round)
+
+# Add ratios to dataframe
+cpc_df <- case_df %>%
+  # Add ratio
+  rbind(df_ratio) %>%
+  # Drop NAs to have clean data
+  drop_na()
+```
+
+# Save data
+```{r}
+save(cpc_df, file = "data_cleaned/cleaned_Tufts_cpc.RData")
+```
