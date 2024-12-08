@@ -1,0 +1,131 @@
+# Aethalometer Data Cleaning
+This file is to clean the Aethalometer Data for Olin deployments
+
+## Load Libraries
+```{r}
+library(tidyverse)
+library(data.table)
+library(readxl)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Read data
+```{r}
+path_to_data <- "data_raw/Olin/aethalometer/"
+```
+
+```{r}
+# List all raw Aethalometer data files in Olin data
+aeth_files <- list.files(path = path_to_data, recursive = TRUE)
+```
+
+```{r}
+# Read all Aethalometer files
+all_df <- data.frame()
+
+for (aeth_file in aeth_files) {
+  # File path
+  file_path = paste0(path_to_data, aeth_file)
+  
+  # Get file metadata
+  file_info <- file.info(file_path)
+  
+  # Skip empty files
+  if(file_info$size > 500) {
+    aeth_file_parts <- str_split_1(aeth_file, "/")
+    
+    
+    # Get environment from file path
+    env = aeth_file_parts[1]
+
+    # Read file into dataframe
+    df <- read_csv(file_path, show_col_types = FALSE) %>%
+      # Select relevant variables and rename
+      select(`Date / time local`, `UV BC1`, `Red BC1`) %>%
+      rename(date = `Date / time local`, uv_bc1 = `UV BC1`, red_bc1 = `Red BC1`) %>%
+      mutate(environment = env, date = force_tz(date, tzone = "America/New_York"))
+
+    # Combine with overall dataframe
+    all_df <- rbind(all_df, df)
+    
+    print(paste("Read", aeth_file))
+  }
+}
+```
+
+
+## Assign case
+The following section reformats the field notes to filter out the timestamps and label purifier case by participant accordingly.
+```{r}
+# Define lookup table to map "sham" and "hepa" to "off" and "on" respectively
+case_lookup <- c(Sham = "off", Hepa = "on")
+# Define table to invert the case for the second period
+case_inverse <- c(off = "on", on = "off")
+
+# Read field notes, skipping top two rows
+time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:J25") %>%
+  # Rename and select relevant columns
+  rename(participant_id = 1, sensor_type = 10, case_1 = "Filter",
+         dt_start_1 = "Air Mon 1 Visit 1", dt_end_1 = "Air Mon 1 Visit 2",
+         dt_start_2 = "Air Mon 2 Visit 3", dt_end_2 = "Air Mon 2 Visit 4") %>%
+  select(participant_id, case_1, starts_with("dt_"), sensor_type) %>%
+  # Convert timezone to Eastern Time
+  mutate(across(c(dt_start_1, dt_end_1, dt_start_2, dt_end_2), 
+                ~force_tz(.x, tzone = "America/New_York")), 
+         # Participant ID to numeric
+         participant_id = as.numeric(participant_id),
+         # Standardize case to on, off, invert the case in the second period
+         case_1 = case_lookup[case_1], case_2 = case_inverse[case_1]) %>%
+  # Filter for Modulair participants
+  filter(grepl("ethylometer", sensor_type)) %>%
+  select(-sensor_type) %>%
+  # Stretch to create case dataframe
+  pivot_longer(cols = -participant_id, names_to = c(".value"), names_pattern = "(.*)_.")
+```
+
+```{r}
+clean_df <- all_df %>%
+  cross_join(time_map) %>%
+  mutate(participant_id = if_else(between(date, dt_start, dt_end), 
+                                  participant_id, NA)) %>% 
+  drop_na() %>% select(-c(dt_start, dt_end))
+```
+
+## Compute indoor-outdoor ratios
+```{r}
+# Prepare dataframe to calculate ratios
+df_wide <- clean_df %>%
+  # Stretch dataframe to separate indoor and outdoor readings
+  pivot_wider(names_from = environment, values_from = c(uv_bc1, red_bc1)) %>%
+  drop_na()
+```
+
+Compute ratios
+```{r}
+# Calculate indoor-outdoor ratio for each measure
+df_ratio <- df_wide %>%
+  mutate(environment = "ratio",
+         uv_bc1 = uv_bc1_indoor/uv_bc1_outdoor, 
+         red_bc1 = red_bc1_indoor/red_bc1_outdoor,
+         .keep = "unused")
+
+# Add ratios to dataframe
+aethalometer_df <- clean_df %>%
+  # Add ratio
+  rbind(df_ratio) %>%
+  # Drop NAs to have clean data
+  drop_na()
+```
