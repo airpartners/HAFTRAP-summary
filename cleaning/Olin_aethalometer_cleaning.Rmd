@@ -4,7 +4,6 @@ This file is to clean the Aethalometer Data for Olin deployments
 ## Load Libraries
 ```{r}
 library(tidyverse)
-library(data.table)
 library(readxl)
 ```
 
@@ -54,8 +53,10 @@ for (aeth_file in aeth_files) {
     # Read file into dataframe
     df <- read_csv(file_path, show_col_types = FALSE) %>%
       # Select relevant variables and rename
-      select(`Date / time local`, `UV BC1`, `Red BC1`) %>%
-      rename(date = `Date / time local`, uv_bc1 = `UV BC1`, red_bc1 = `Red BC1`) %>%
+      select(`Date / time local`, `UV BC1`, `Blue BC1`, `Green BC1`, 
+             `Red BC1`, `IR BC1`, `Readable status`) %>%
+      rename_with(~ tolower(gsub(" ", "_", .x)), contains("BC1")) %>%
+      rename(date = `Date / time local`, status = `Readable status`) %>%
       mutate(environment = env, date = force_tz(date, tzone = "America/New_York"))
 
     # Combine with overall dataframe
@@ -89,7 +90,7 @@ time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:J25") 
          participant_id = as.numeric(participant_id),
          # Standardize case to on, off, invert the case in the second period
          case_1 = case_lookup[case_1], case_2 = case_inverse[case_1]) %>%
-  # Filter for Modulair participants
+  # Filter for Aethalometer (misspelled in field notes)
   filter(grepl("ethylometer", sensor_type)) %>%
   select(-sensor_type) %>%
   # Stretch to create case dataframe
@@ -98,10 +99,16 @@ time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:J25") 
 
 ```{r}
 clean_df <- all_df %>%
-  cross_join(time_map) %>%
-  mutate(participant_id = if_else(between(date, dt_start, dt_end), 
-                                  participant_id, NA)) %>% 
-  drop_na() %>% select(-c(dt_start, dt_end))
+  # Filter for participants and case within time ranges (since no overlap)
+  cross_join(time_map) %>% 
+  mutate(time_check = between(date, dt_start, dt_end)) %>%
+  filter(time_check) %>%
+  # Filter out startup statuses
+  filter(!grepl("Start up", status)) %>%
+  # Round date to minute and drop unnecessary columns
+  mutate(date = round_date(date, "minute")) %>%
+  select(-c(dt_start, dt_end, status, time_check)) %>%
+  drop_na()
 ```
 
 ## Compute indoor-outdoor ratios
@@ -109,7 +116,8 @@ clean_df <- all_df %>%
 # Prepare dataframe to calculate ratios
 df_wide <- clean_df %>%
   # Stretch dataframe to separate indoor and outdoor readings
-  pivot_wider(names_from = environment, values_from = c(uv_bc1, red_bc1)) %>%
+  pivot_wider(names_from = environment, 
+              values_from = c(uv_bc1, blue_bc1, green_bc1, red_bc1, ir_bc1)) %>%
   drop_na()
 ```
 
@@ -119,7 +127,10 @@ Compute ratios
 df_ratio <- df_wide %>%
   mutate(environment = "ratio",
          uv_bc1 = uv_bc1_indoor/uv_bc1_outdoor, 
+         blue_bc1 = blue_bc1_indoor/blue_bc1_outdoor, 
+         green_bc1 = green_bc1_indoor/green_bc1_outdoor,
          red_bc1 = red_bc1_indoor/red_bc1_outdoor,
+         ir_bc1 = ir_bc1_indoor/ir_bc1_outdoor,
          .keep = "unused")
 
 # Add ratios to dataframe
@@ -128,4 +139,9 @@ aethalometer_df <- clean_df %>%
   rbind(df_ratio) %>%
   # Drop NAs to have clean data
   drop_na()
+```
+
+# Save Data
+```{r}
+save(aethalometer_df, file = "data_cleaned/cleaned_Olin_aethalometer.RData")
 ```
