@@ -108,7 +108,8 @@ clean_df <- all_df %>%
   # Round date to minute and drop unnecessary columns
   mutate(date = round_date(date, "minute")) %>%
   select(-c(dt_start, dt_end, status, time_check)) %>%
-  drop_na()
+  # Convert all zeros to NAs
+  mutate(across(contains("bc1"), ~ifelse(.x == 0, NA, .x)))
 ```
 
 ## Compute indoor-outdoor ratios
@@ -117,8 +118,7 @@ clean_df <- all_df %>%
 df_wide <- clean_df %>%
   # Stretch dataframe to separate indoor and outdoor readings
   pivot_wider(names_from = environment, 
-              values_from = c(uv_bc1, blue_bc1, green_bc1, red_bc1, ir_bc1)) %>%
-  drop_na()
+              values_from = c(uv_bc1, blue_bc1, green_bc1, red_bc1, ir_bc1))
 ```
 
 Compute ratios
@@ -136,9 +136,7 @@ df_ratio <- df_wide %>%
 # Add ratios to dataframe
 aethalometer_df <- clean_df %>%
   # Add ratio
-  rbind(df_ratio) %>%
-  # Drop NAs to have clean data
-  drop_na()
+  rbind(df_ratio)
 ```
 
 # Save Data
