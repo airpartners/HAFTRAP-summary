@@ -153,3 +153,37 @@ cpc_df <- case_df %>%
 ```{r}
 save(cpc_df, file = "data_cleaned/cleaned_Tufts_cpc.RData")
 ```
+
+
+---- End of Cleaning Script ----
+
+## Plotting before/after cleaning
+```{r}
+# Round raw data to 1 minute for quicker plotting
+plot_df <- all_df %>%
+  # Round values to nearest minute and calculate mean
+  mutate(date_round = round_date(date, "1 minute")) %>%
+  # Group by the rounded datetime
+  group_by(environment, participant_id, date_round, `Status Flags`) %>%
+  # Calculate mean per minute
+  summarize(Concentration = mean(Concentration), .groups = "drop") %>%
+  mutate(participant_id = as.factor(participant_id))
+```
+
+```{r}
+plot_df %>%
+ggplot(aes(x = date_round, y = Concentration, color = participant_id)) +
+  geom_point(size = 0.1) +
+  facet_wrap(~environment, nrow = 2)
+```
+
+```{r}
+# Plot cleaned data using df_round from above 
+# (df_round is post-filtered data rounded to 1 minute)
+df_round %>%
+  mutate(participant_id = as.factor(participant_id)) %>%
+  ggplot(aes(x = date_round, y = concent, color = participant_id)) +
+    geom_point(size = 0.1) +
+    facet_wrap(~environment, nrow = 2)
+```
+

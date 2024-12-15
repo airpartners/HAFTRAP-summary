@@ -98,16 +98,39 @@ time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:J25") 
 ```
 
 ```{r}
-clean_df <- all_df %>%
+case_df <- all_df %>%
   # Filter for participants and case within time ranges (since no overlap)
   cross_join(time_map) %>% 
   mutate(time_check = between(date, dt_start, dt_end)) %>%
-  filter(time_check) %>%
-  # Filter out startup statuses
+  filter(time_check)
+```
+
+```{r}
+# Function to check if value is within range
+in_range <- function(bc_measure) {
+  bc_measure > -1000 & bc_measure < 5000
+}
+
+filtered_df <- case_df %>%
+  # Filter out startup statuses and drop unnecessary columns
   filter(!grepl("Start up", status)) %>%
-  # Round date to minute and drop unnecessary columns
-  mutate(date = round_date(date, "minute")) %>%
   select(-c(dt_start, dt_end, status, time_check)) %>%
+  # Filter outlier values
+  filter(if_all(contains("bc1"), in_range))
+```
+
+```{r}
+round_df <-  filtered_df %>%
+  # Round date to minute and drop unnecessary columns
+  mutate(date = round_date(date, "10 minutes")) %>%
+  group_by(environment, participant_id, case, date) %>%
+  # Calculate mean per minute
+  summarize(across(contains("bc1"), mean), .groups = "drop")
+```
+
+```{r}
+# Finally, remove all zero values
+clean_df <- round_df %>%
   # Convert all zeros to NAs
   mutate(across(contains("bc1"), ~ifelse(.x == 0, NA, .x)))
 ```
@@ -143,3 +166,24 @@ aethalometer_df <- clean_df %>%
 ```{r}
 save(aethalometer_df, file = "data_cleaned/cleaned_Olin_aethalometer.RData")
 ```
+
+---- End of Cleaning Script ----
+
+## Plotting before/after cleaning
+```{r}
+round_df %>%
+  mutate(participant_id = as.factor(participant_id)) %>%
+ggplot(aes(x = date, y = uv_bc1, color = participant_id)) +
+  geom_point(size = 0.1) +
+  facet_wrap(~environment, nrow = 2)
+```
+
+```{r}
+# Data with zeros filtered out
+clean_df %>%
+  mutate(participant_id = as.factor(participant_id)) %>%
+ggplot(aes(x = date, y = uv_bc1, color = participant_id)) +
+  geom_point(size = 0.1) +
+  facet_wrap(~environment, nrow = 2)
+```
+
