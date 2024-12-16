@@ -1,0 +1,58 @@
+# HAFTRAP Plotting Diurnals
+
+
+## Set up
+```{r}
+# Import relevant libraries
+library(tidyverse)
+library(openair)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/HAFTRAP-summary")
+```
+
+```{r}
+# Get file path
+if (!endsWith(getwd(), "HAFTRAP-summary")) {
+  stop("Incorrect working directory")
+}
+```
+
+Path to data
+```{r}
+# Set path to data
+path_to_data <- "data_cleaned/"
+```
+
+## Load data
+```{r}
+# Define column lists for each pollutant group
+id_cols <- c("date", "participant_id", "environment", "case")
+particulate_matter_cols <- c(id_cols, "pm1", "pm25", "pm10", "pm1num")
+
+load(paste0(path_to_data, "cleaned_Olin_modpm.RData"))
+modpm_olin <- modpm_df
+load(paste0(path_to_data, "cleaned_Olin_modulair.RData"))
+modulair_olin <- modulair_df
+load(paste0(path_to_data, "cleaned_SCOPE_modulair.RData"))
+modulair_scope <- modulair_df
+
+
+# Combine all Modulair data
+modulair_all <- rbind(modulair_olin, modulair_scope)
+
+# Combine all particulate matter data
+particulate_matter <- modulair_all %>% 
+  select(all_of(particulate_matter_cols)) %>%
+  rbind(modpm_olin)
+```
+
+```{r}
+particulate_matter %>%
+  filter(environment == "indoor") %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "case")
+```
+
