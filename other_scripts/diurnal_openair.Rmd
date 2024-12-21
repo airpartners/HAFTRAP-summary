@@ -38,7 +38,12 @@ load(paste0(path_to_data, "cleaned_Olin_modulair.RData"))
 modulair_olin <- modulair_df
 load(paste0(path_to_data, "cleaned_SCOPE_modulair.RData"))
 modulair_scope <- modulair_df
-
+load(paste0(path_to_data, "cleaned_Olin_cpc.RData"))
+cpc_olin <- cpc_df
+load(paste0(path_to_data, "cleaned_SCOPE_cpc.RData"))
+cpc_scope <- cpc_df
+load(paste0(path_to_data, "cleaned_Tufts_cpc.RData"))
+cpc_tufts <- cpc_df
 
 # Combine all Modulair data
 modulair_all <- rbind(modulair_olin, modulair_scope)
@@ -47,12 +52,75 @@ modulair_all <- rbind(modulair_olin, modulair_scope)
 particulate_matter <- modulair_all %>% 
   select(all_of(particulate_matter_cols)) %>%
   rbind(modpm_olin)
+
+# Combine Brechtel CPC data
+ufp_brechtel <- rbind(cpc_olin, cpc_scope)
+ufp_all <- rbind(ufp_brechtel, cpc_tufts)
 ```
 
 ```{r}
-particulate_matter %>%
+pm_plot <- particulate_matter %>%
   filter(environment == "indoor") %>%
   mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
-  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "case")
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "case",
+                local.tz = "America/New_York", plot = FALSE)
+```
+```{r}
+pm_subplot <- pm_plot$plot$hour
+
+plot.new()
+plot(pm_subplot)
+
+title(main = expression("Mean Diurnal Indoor PM"[2.5]), line = 3)
+legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
 ```
 
+```{r}
+ufp_plot <- ufp_all %>%
+  filter(environment == "indoor") %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "concent", 
+                ylab = "UFP Concentration (particles/cc)", 
+                group = "case", local.tz = "America/New_York", plot = FALSE)
+```
+
+```{r}
+ufp_subplot <- ufp_plot$plot$hour
+
+plot.new()
+plot(ufp_subplot)
+
+title(main = "Mean Diurnal Indoor UFP Count", line = 3)
+legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+
+
+
+```{r}
+df <- particulate_matter %>% 
+  filter(environment == "indoor") %>%
+  mutate(hour = hour(date), 
+         case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>% 
+  group_by(hour, case) %>% 
+  summarize(mean_pm25 = mean(pm25),
+            sd_pm25 = sd(pm25),
+            count_pm25 = n()) %>%
+  mutate(interval = 1.96 * (sd_pm25 / sqrt(count_pm25)))
+
+df %>%
+  ggplot(aes(x = hour, y = mean_pm25, color = case)) + 
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_pm25 - interval, ymax = mean_pm25 + interval))
+```
+
+
+```{r}
+ufp_brechtel %>%
+  filter(environment == "indoor") %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "concent", ylab = "UFP Count (ug/m3)", 
+                group = "case")
+```
