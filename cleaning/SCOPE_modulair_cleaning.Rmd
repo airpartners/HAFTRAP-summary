@@ -28,7 +28,8 @@ path_to_data <- "data_raw/SCOPE/"
 deployment_ids <- 1:4
 
 # All columns
-col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2", "bin0", "bin1", "bin2")
+col_list <- c("timestamp", "pm1", "pm25", "pm10", "no", "co", "no2", 
+              "bin0", "bin1", "bin2")
 ```
 
 ```{r}
@@ -39,15 +40,19 @@ all_df <- data.frame()
 for (deployment in deployment_ids) {
   path <- paste0(path_to_data, "deployment_", deployment, "/")
   # Read indoor data
-  indoor <- read_csv(paste0(path, "MOD_indoor.csv"), show_col_types = FALSE) %>%
+  indoor <- read_csv(paste0(path, "MOD_indoor.csv"), 
+                     show_col_types = FALSE) %>%
     select(col_list) %>% mutate(environment = "indoor")
   
   # Read outdoor data
-  outdoor <- read_csv(paste0(path, "MOD_outdoor.csv"), show_col_types = FALSE) %>%
+  outdoor <- read_csv(paste0(path, "MOD_outdoor.csv"), 
+                      show_col_types = FALSE) %>%
     select(all_of(col_list)) %>% mutate(environment = "outdoor")
   
   # Combine indoor and outdoor data, inserting deployment ID
-  joined <- rbind(indoor, outdoor) %>% mutate(dep_id = deployment)
+  joined <- rbind(indoor, outdoor) %>% 
+    mutate(dep_id = deployment, 
+           timestamp = as.POSIXct(timestamp, tz = "America/New_York"))
   
   all_df <- rbind(all_df, joined)
 }
@@ -119,7 +124,8 @@ for (deployment in deployment_ids) {
 ## Compute PM1 Number Count
 Additionally clean data a bit for future
 ```{r}
-clean_df <- case_df %>% mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>% 
+clean_df <- case_df %>% 
+  mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>% 
   # Round timestamps to nearest minute, rename column to date
   mutate(date = round_date(timestamp, "minute"), .keep = "unused") %>%
   # Remove repeat readings
@@ -131,8 +137,8 @@ clean_df <- case_df %>% mutate(pm1num = bin0 + bin1 + bin2, .keep = "unused") %>
 # Prepare dataframe to calculate ratios
 df_wide <- clean_df %>% 
   # Stretch dataframe to separate indoor and outdoor readings
-  pivot_wider(names_from = environment, values_from = c(pm1, pm25, pm10, pm1num,
-                                                        no, co, no2)) %>%
+  pivot_wider(names_from = environment, 
+              values_from = c(pm1, pm25, pm10, pm1num, no, co, no2)) %>%
   drop_na()
 ```
 

@@ -36,15 +36,18 @@ modulair_participants <- c(57301, 57331, 57311, 57341)
 All modulair data was collected by two Modulairs (one indoors, another outdoors) being shuffled between different deployments
 ```{r}
 # Read indoor data
-indoor <- read_csv(paste0(path_to_data, "OH_R_indoor.csv"), show_col_types = FALSE) %>%
-  select(col_list) %>% mutate(environment = "indoor")
+indoor <- read_csv(paste0(path_to_data, "OH_R_indoor.csv"), 
+                   show_col_types = FALSE) %>%
+  select(all_of(col_list)) %>% mutate(environment = "indoor")
 
 # Read outdoor data
-outdoor <- read_csv(paste0(path_to_data, "OH_R_outdoor.csv"), show_col_types = FALSE) %>%
+outdoor <- read_csv(paste0(path_to_data, "OH_R_outdoor.csv"), 
+                    show_col_types = FALSE) %>%
   select(all_of(col_list)) %>% mutate(environment = "outdoor")
 
 # Combine indoor and outdoor data
-all_df <- rbind(indoor, outdoor)
+all_df <- rbind(indoor, outdoor) %>%
+  mutate(timestamp = as.POSIXct(timestamp, tz = "America/New_York"))
 ```
 
 ## Participant, case filtering
@@ -57,12 +60,13 @@ case_inverse <- c(off = "on", on = "off")
 
 
 # Read field notes, skipping top two rows
-time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") %>%
+time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", 
+                       range = "A3:J25") %>%
   # Rename and select relevant columns
-  rename(participant_id = 1, case_1 = "Filter",
+  rename(participant_id = 1, case_1 = "Filter", sensor_type = 10,
          dt_start_1 = "Air Mon 1 Visit 1", dt_end_1 = "Air Mon 1 Visit 2",
          dt_start_2 = "Air Mon 2 Visit 3", dt_end_2 = "Air Mon 2 Visit 4") %>%
-  select(participant_id, case_1, starts_with("dt_")) %>%
+  select(participant_id, case_1, sensor_type, starts_with("dt_")) %>%
   # Convert timezone to Eastern Time
   mutate(across(c(dt_start_1, dt_end_1, dt_start_2, dt_end_2), 
                 ~force_tz(.x, tzone = "America/New_York")), 
@@ -71,9 +75,11 @@ time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") 
          # Standardize case to on, off, invert the case in the second period
          case_1 = case_lookup[case_1], case_2 = case_inverse[case_1]) %>%
   # Filter for Modulair participants
-  filter(participant_id %in% modulair_participants) %>%
+  filter(grepl("MODs", sensor_type)) %>%
+  select(-sensor_type) %>%
   # Stretch to create case dataframe
-  pivot_longer(cols = -participant_id, names_to = c(".value"), names_pattern = "(.*)_.")
+  pivot_longer(cols = -participant_id, names_to = c(".value"), 
+               names_pattern = "(.*)_.")
 ```
 Assign case and participant ID
 ```{r}
@@ -106,8 +112,8 @@ clean_df <- case_df %>%
 # Prepare dataframe to calculate ratios
 df_wide <- clean_df %>% 
   # Stretch dataframe to separate indoor and outdoor readings
-  pivot_wider(names_from = environment, values_from = c(pm1, pm25, pm10, pm1num,
-                                                        no, co, no2)) %>%
+  pivot_wider(names_from = environment, 
+              values_from = c(pm1, pm25, pm10, pm1num, no, co, no2)) %>%
   drop_na()
 ```
 

@@ -49,7 +49,8 @@ for (file_name in modpm_files) {
     select(all_of(col_list)) %>%
     mutate(participant_id = as.numeric(file_parts[3]),
            case = file_parts[4],
-           environment = str_remove(file_parts[5], ".csv"))
+           environment = str_remove(file_parts[5], ".csv"),
+           timestamp = as.POSIXct(timestamp, tz = "America/New_York"))
   
   # Bind df to overall df
   all_df <- rbind(all_df, df)
@@ -63,12 +64,13 @@ for (file_name in modpm_files) {
 The data is manually downloaded from Quant-AQ and is filtered to the nearest day. Filter to exact time of sensor installation recorded in field notes.
 ```{r}
 # Read field notes, skipping top two rows
-time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") %>%
+time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", 
+                       range = "A3:J25") %>%
   # Rename and select relevant columns
-  rename(participant_id = 1, 
+  rename(participant_id = 1, sensor_type = 10,
          dt_1_start = "Air Mon 1 Visit 1", dt_1_end = "Air Mon 1 Visit 2",
          dt_2_start = "Air Mon 2 Visit 3", dt_2_end = "Air Mon 2 Visit 4") %>%
-  select(participant_id, starts_with("dt_")) %>%
+  select(participant_id, sensor_type, starts_with("dt_")) %>%
   # Convert timezone to Eastern Time
   mutate(across(c(dt_1_start, dt_1_end, dt_2_start, dt_2_end), 
                 ~force_tz(.x, tzone = "America/New_York"))) %>%
@@ -78,12 +80,14 @@ time_map <- read_excel("data_raw/Olin/Olin_field_notes.xlsx", range = "A3:I25") 
 ```
 
 ```{r}
-# Filter original dataframe to only include participants in the field notes
-all_df <- all_df %>% filter(participant_id %in% unique(time_map$participant_id))
+# Create list of participants in the field notes
+participant_list <- time_map %>% 
+  filter(grepl("MOD-PM", sensor_type)) %>% 
+  select(participant_id) %>% unique()
 
 case_df <- data.frame()
 # Loop across list of Mod-PM participants with data downloaded
-for (participant in participant_list) {
+for (participant in participant_list[[1]]) {
   # Filter for current participant
   current_map <- time_map %>% filter(participant_id == participant)
   
@@ -123,7 +127,8 @@ clean_df <- case_df %>%
 # Prepare dataframe to calculate ratios
 df_wide <- clean_df %>%
   # Stretch dataframe to separate indoor and outdoor readings
-  pivot_wider(names_from = environment, values_from = c(pm1, pm25, pm10, pm1num)) %>%
+  pivot_wider(names_from = environment, 
+              values_from = c(pm1, pm25, pm10, pm1num)) %>%
   drop_na()
 ```
 
@@ -133,7 +138,8 @@ Compute ratios
 df_ratio <- df_wide %>%
   mutate(environment = "ratio",
          pm1 = pm1_indoor/pm1_outdoor, pm25 = pm25_indoor/pm25_outdoor, 
-         pm10 = pm10_indoor/pm10_outdoor, pm1num = pm1num_indoor/pm1num_outdoor,
+         pm10 = pm10_indoor/pm10_outdoor, 
+         pm1num = pm1num_indoor/pm1num_outdoor,
          .keep = "unused")
 
 # Add ratios to dataframe
