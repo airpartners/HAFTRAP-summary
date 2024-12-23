@@ -1,0 +1,113 @@
+# Plot formatted data tables
+This file combines summary data from different pollutants and creates formatted tables
+
+## Load Libraries
+```{r}
+library(tidyverse)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+
+## Read data
+```{r}
+path_to_data <- "data_summarized/"
+
+# Particulate matter
+pm_redu <- read_csv(paste0(path_to_data, "summary_pm_redu.csv"))
+# Ultrafine particles
+ufp_redu <- read_csv(paste0(path_to_data, "summary_ufp_redu.csv"))
+# Gas phase
+gp_redu <- read_csv(paste0(path_to_data, "summary_gp_redu.csv"))
+# Black carbon
+bc_redu <- read_csv(paste0(path_to_data, "summary_bc_redu.csv"))
+```
+
+## Combine data
+```{r}
+all_redu <- pm_redu %>% 
+  rbind(ufp_redu) %>% 
+  rbind(gp_redu) %>% 
+  rbind(bc_redu) %>%
+  filter(participant_id == "all") %>%
+  select(-participant_id)
+```
+
+## Plot data
+```{r}
+## Global variables for plotting function
+
+# Sets order for displaying particles in heatmap
+particle_order <- c("PM 1 Conc.", "PM 2.5 Conc.", "PM 10 Conc.", 
+                   "PM 1 Count", "UFP Count", "CO Conc.", "NO Conc.", 
+                   "NO2 Conc.", "BC (UV)")
+
+relevant_pollutants <- c("pm25", "pm1num", "concent", "no", "uv_bc1")
+
+stat_name <- c("mean" = "Mean", "median" = "Median", "q5" = "5th Percentile",
+               "q25" = "25th Percentile", "q75" = "75th Percentile",
+               "q95" = "95th Percentile", "sd" = "Standard Deviation")
+
+plot_heatmap <- function(summary_redu, sum_stat) {
+  # Pre-process data before plotting
+  summary_redu %>%
+    filter(p_type %in% relevant_pollutants) %>%
+    
+    # Recode for accurate labels
+    mutate(p_type = recode(p_type, 
+                           "pm1" = "PM 1 Conc.", "pm25" = "PM 2.5 Conc.",
+                           "pm10" = "PM 10 Conc.", "pm1num" = "PM 1 Count",
+                           "concent" = "UFP Count", "co" = "CO Conc.", 
+                           "no" = "NO Conc.", "no2" = "NO2 Conc.", 
+                           "uv_bc1" = "BC (UV)"),
+           environment = recode(environment,
+                                "indoor" = "Indoor", 
+                                "outdoor" = "Outdoor",
+                                "ratio" = "I/O Ratio")) %>%
+    
+    # Arrange axes in specified order
+    mutate(p_type = factor(p_type, levels = particle_order)) %>%
+
+    # Plot heatmap
+    ggplot(aes(x = p_type, y = environment)) +
+      # Fill with value of stat
+      geom_tile(aes(fill = .data[[sum_stat]])) +
+      # Print in value of stat
+      geom_text(aes(label = paste0(round(.data[[sum_stat]], 1), "%"))) +
+    
+      # Set color scale
+      scale_fill_gradient2(low = "#ff7f7f", high = "#DeF7E9", 
+                           mid = "white") +
+      # Set axis labels, title
+      labs(title = paste("Percentage Reductions in", stat_name[sum_stat]), 
+           x = "Particle Type", y = "Summary Statistic", 
+           fill = "Reduction (%)") +
+      # Set theme
+      theme_minimal()
+}
+```
+
+## Plot data as heatmap
+```{r}
+all_redu %>% 
+  filter(environment != "outdoor") %>%
+  plot_heatmap("mean")
+```
+```{r}
+all_redu %>% 
+  filter(environment != "outdoor") %>%
+  plot_heatmap("q5")
+```
+
