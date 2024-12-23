@@ -1,5 +1,5 @@
-# Mod-PM Data Summary
-This file is to summarize Modulair-PM Data for Olin deployments
+# Particulate Matter Data Summary
+This file summarizes all particulate matter data from Modulair and Modulair-PM Olin and SCOPE deployments
 
 ## Load Libraries
 ```{r}
