@@ -68,11 +68,10 @@ particulate_matter <- modulair_all %>%
   rbind(modpm_olin)
 
 # Combine Brechtel CPC data, add CPC type to variable
-ufp_brechtel <- rbind(cpc_olin, cpc_scope) %>% 
-  rename(concent_brechtel = concent)
+ufp_brechtel <- rbind(cpc_olin, cpc_scope)
 
 # Add CPC type to Tufts CPC variable name
-ufp_tsi <- cpc_tufts %>% rename(concent_tsi = concent)
+ufp_all <- rbind(ufp_brechtel, cpc_tufts)
 
 # Select columns for black carbon
 black_carbon <- aethalometer_olin %>% select(all_of(black_carbon_cols))
@@ -105,8 +104,7 @@ my_summarise <- function(main_df) {
 ```{r}
 all_summary <- my_summarise(particulate_matter) %>%
   rbind(my_summarise(gas_phase)) %>%
-  rbind(my_summarise(ufp_brechtel)) %>%
-  rbind(my_summarise(ufp_tsi)) %>%
+  rbind(my_summarise(ufp_all)) %>%
   rbind(my_summarise(black_carbon))
 ```
 
@@ -138,17 +136,17 @@ summary_redu <- summary_wide %>%
 
 # Sets order for displaying particles in heatmap
 particle_order <- c("PM 1 Conc.", "PM 2.5 Conc.", "PM 10 Conc.", 
-                   "PM 1 Count", "UFP (Brechtel)", "UFP (TSI)",
-                   "CO Conc.", "NO Conc.", "NO2 Conc.", "BC (UV)")
+                   "PM 1 Count", "UFP Count", "CO Conc.", "NO Conc.", 
+                   "NO2 Conc.", "BC (UV)")
 
-relevant_pollutants <- c("pm25", "pm1num", "concent_brechtel", "no", "uv_bc1")
+relevant_pollutants <- c("pm25", "pm1num", "concent", "no", "uv_bc1")
 
 stat_name <- c("mean" = "Mean", "median" = "Median", "q5" = "5th Percentile",
                "q25" = "25th Percentile", "q75" = "75th Percentile",
                "q95" = "95th Percentile", "sd" = "Standard Deviation")
 
 plot_heatmap <- function(summary_redu, sum_stat) {
-  # Pre-process data before ploting
+  # Pre-process data before plotting
   summary_redu %>%
     filter(p_type %in% relevant_pollutants) %>%
     
@@ -156,8 +154,7 @@ plot_heatmap <- function(summary_redu, sum_stat) {
     mutate(p_type = recode(p_type, 
                            "pm1" = "PM 1 Conc.", "pm25" = "PM 2.5 Conc.",
                            "pm10" = "PM 10 Conc.", "pm1num" = "PM 1 Count",
-                           "concent_brechtel" = "UFP (Brechtel)",
-                           "concent_tsi" = "UFP (TSI)", "co" = "CO Conc.", 
+                           "concent" = "UFP Count", "co" = "CO Conc.", 
                            "no" = "NO Conc.", "no2" = "NO2 Conc.", 
                            "uv_bc1" = "BC (UV)"),
            environment = recode(environment,
@@ -176,7 +173,8 @@ plot_heatmap <- function(summary_redu, sum_stat) {
       geom_text(aes(label = paste0(round(.data[[sum_stat]], 1), "%"))) +
     
       # Set color scale
-      scale_fill_gradient2(low = "#ff7f7f", high = "#DeF7E9", mid = "white") +
+      scale_fill_gradient2(low = "#ff7f7f", high = "#DeF7E9", 
+                           mid = "white") +
       # Set axis labels, title
       labs(title = paste("Percentage Reductions in", stat_name[sum_stat]), 
            x = "Particle Type", y = "Summary Statistic", 
