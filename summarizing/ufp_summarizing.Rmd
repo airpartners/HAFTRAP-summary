@@ -1,5 +1,5 @@
 # CPC Data Summary
-This file is to summarize CPC Data for SCOPE deployments - essentially a copy of `SCOPE_modulair_summarizing.Rmd`
+This file summarizes all CPC Data for Olin, SCOPE, and Tufts deployments.
 
 ## Load Libraries
 ```{r}
@@ -24,7 +24,14 @@ if (!endsWith(getwd(), working_dir)) {
 ```{r}
 path_to_data <- "data_cleaned/"
 
+load(paste0(path_to_data, "cleaned_Olin_cpc.RData"))
+cpc_olin <- cpc_df
+
 load(paste0(path_to_data, "cleaned_SCOPE_cpc.RData"))
+cpc_scope <- cpc_df
+
+load(paste0(path_to_data, "cleaned_Tufts_cpc.RData"))
+cpc_tufts <- cpc_df
 ```
 
 ## Helper Function: Calculate summary statistics
@@ -45,11 +52,16 @@ my_summarise <- function(main_df, groups) {
 ```
 
 ## Main Code Run
+### Combine all CPC data
+```{r}
+ufp_all <- cpc_olin %>% rbind(cpc_scope) %>% rbind(cpc_tufts)
+```
+
 ### Gather, group, and summarize
 ```{r}
 # NOTE: this step is pointless since there is only one variable, 'concent'
 # But we do it for this script + output data format to be consistent with Modulair
-cpc_df_long <- cpc_df %>%
+ufp_all_long <- ufp_all %>%
   # Gather dataframe to create single variable for measurements
   pivot_longer(!c(date, environment, participant_id, case), 
                names_to = "p_type", values_to = "reading") %>%
@@ -57,11 +69,11 @@ cpc_df_long <- cpc_df %>%
   filter(is.finite(reading)) 
 
 # Calculate summary statistics for each participant
-participant_summary <- cpc_df_long %>%
+participant_summary <- ufp_all_long %>%
   my_summarise(c("participant_id", "case", "environment", "p_type"))
   
 # Calculate summary statistics over all the data
-overall_summary <- cpc_df_long %>%
+overall_summary <- ufp_all_long %>%
   my_summarise(c("case", "environment", "p_type")) %>%
   # Add participant ID column as 'all'
   mutate(participant_id = "all")
@@ -73,7 +85,8 @@ summary <- rbind(participant_summary, overall_summary)
 ### Calculate percentage reduction in concentration from no HEPA to HEPA
 ```{r}
 # Spread: Create separate sham, hepa summary statistics columns
-summary_wide <- pivot_wider(summary, names_from = case, values_from = mean:sd)
+summary_wide <- pivot_wider(summary, names_from = case, 
+                            values_from = mean:sd)
 
 # Calculate percentage reduction in all summary statistics
 summary_redu <- 100*(select(summary_wide, ends_with("off")) - 
@@ -90,7 +103,7 @@ summary_redu <- summary_wide %>%
 ```
 
 ```{r}
-write_csv(summary, "data_summarized/summary_SCOPE_cpc_raw.csv")
-write_csv(summary_redu, "data_summarized/summary_SCOPE_cpc_redu.csv")
+write_csv(summary, "data_summarized/summary_ufp_raw.csv")
+write_csv(summary_redu, "data_summarized/summary_ufp_redu.csv")
 ```
 
