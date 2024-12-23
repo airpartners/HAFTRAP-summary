@@ -1,5 +1,5 @@
-# Aethalometer Data Summary
-This file is to summarize Aethalometer Data for Olin deployments
+# Black Carbon Data Summary
+This file summarizes Aethalometer black carbon data for Olin deployments
 
 ## Load Libraries
 ```{r}
@@ -89,6 +89,6 @@ summary_redu <- summary_wide %>%
 ```
 
 ```{r}
-write_csv(summary, "data_summarized/summary_Olin_aethalometer_raw.csv")
-write_csv(summary_redu, "data_summarized/summary_Olin_aethalometer_redu.csv")
+write_csv(summary, "data_summarized/summary_bc_raw.csv")
+write_csv(summary_redu, "data_summarized/summary_bc_redu.csv")
 ```
