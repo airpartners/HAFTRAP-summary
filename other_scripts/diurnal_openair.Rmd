@@ -91,7 +91,7 @@ ufp_subplot <- ufp_plot$plot$hour
 plot.new()
 plot(ufp_subplot)
 
-title(main = "Mean Diurnal Indoor UFP Count", line = 3)
+title(main = expression("Mean Diurnal Indoor UFP Count"), line = 3)
 legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
        title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
 ```
