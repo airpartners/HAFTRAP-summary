@@ -19,70 +19,107 @@ if (!endsWith(getwd(), "HAFTRAP-summary")) {
 }
 ```
 
+## Load cleaned data
 Path to data
 ```{r}
 # Set path to data
-path_to_data <- "data_cleaned/"
+path_to_data <- "data_summarized/"
 ```
 
-## Load data
+## Load Summary Data
 ```{r}
-# Define column lists for each pollutant group
-id_cols <- c("date", "participant_id", "environment", "case")
-particulate_matter_cols <- c(id_cols, "pm1", "pm25", "pm10", "pm1num")
+pm_raw <- read_csv(paste0(path_to_data, "summary_pm_raw.csv"))
+ufp_raw <- read_csv(paste0(path_to_data, "summary_ufp_raw.csv"))
+bc_raw <- read_csv(paste0(path_to_data, "summary_bc_raw.csv"))
 
-load(paste0(path_to_data, "cleaned_Olin_modpm.RData"))
-modpm_olin <- modpm_df
-load(paste0(path_to_data, "cleaned_Olin_modulair.RData"))
-modulair_olin <- modulair_df
-load(paste0(path_to_data, "cleaned_SCOPE_modulair.RData"))
-modulair_scope <- modulair_df
-
-
-# Combine all Modulair data
-modulair_all <- rbind(modulair_olin, modulair_scope)
-
-# Combine all particulate matter data
-particulate_matter <- modulair_all %>% 
-  select(all_of(particulate_matter_cols)) %>%
-  rbind(modpm_olin)
+pm_redu <- read_csv(paste0(path_to_data, "summary_pm_redu.csv"))
+ufp_redu <- read_csv(paste0(path_to_data, "summary_ufp_redu.csv"))
+bc_redu <- read_csv(paste0(path_to_data, "summary_bc_redu.csv"))
 ```
 
 
 ## Plotting for Indoor and Outdoor raw concentrations
 Define lists for plot titles
 ```{r}
-name_map <- list(pm1 = "PM 1 Concentration", pm25 = "PM 2.5 Concentration",
-               pm10 = "PM 10 Concentration", pm1num = "PM 1 Particle Count",
-               concent = "CPC Particle Count")
+name_map <- c(pm1 = "PM 1 Concentration", pm25 = "PM 2.5 Concentration",
+              pm10 = "PM 10 Concentration", pm1num = "PM 1 Particle Count",
+              concent = "CPC Particle Count", 
+              uv_bc1 = "Black Carbon (UV) Conc.")
 
-titles_ratio <- list(pm1 = "PM 1 I/O Ratio", pm25 = "PM 2.5 I/O Ratio",
-               pm10 = "PM 10 I/O Ratio", pm1num = "PM 1 Count I/O Ratio",
-               concent = "CPC Count I/O Ratio")
+pollutant_map <- c(pm1 = "PM 1", pm25 = "PM 2.5", pm10 = "PM 10", 
+                   pm1num = "PM 1 Count", concent = "CPC Count", 
+                   uv_bc1 = "Black Carbon")
+
+environment_map <- c(indoor = "Indoor", outdoor = "Outdoor", 
+                     ratio = "I/O Ratio")
 ```
 
-### Plotting percentage reduction in I/O ratio
 ```{r}
 # For a given dataset of ratio data, specify the particle type
-plot_raw <- function(df, p_type) {
-  df %>%
-    filter(environment == "ratio") %>%
-    mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+custom_boxplot <- function(df_raw, df_redu, pollutant, env) {
+  
+  # Get value of mean % reduction
+  redu_val <- df_redu %>%
+    filter(p_type == pollutant, environment == env,
+           participant_id == "all") %>%
+    select(mean) %>% as.numeric() %>% round(digits = 1)
+  
+  # Filter raw data to relevant pollutant and environment, recode case
+  raw_stats <- df_raw %>%
+    filter(p_type == pollutant, environment == env, 
+           participant_id == "all") %>%
+    mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA"))
+  
+  # Set y position of mean annotation to the top of plot
+  redu_y <- raw_stats %>% select(q95) %>% max()
+
+  plot.new()
+  
+  new_plot <- raw_stats %>%
     # Plot filtered data
-    ggplot(aes(x = case, y = .data[[p_type]], fill = case)) +
+    ggplot(aes(x = case, fill = case)) +
       # Create boxplot with each situation (case + env)
-      geom_boxplot(outlier.shape = NA) +
-      # Set scale to between 5th and 95th percentile
-      scale_y_continuous(limits = quantile(df[[p_type]], c(0.1, 0.9))) +
+      geom_boxplot(aes(ymin = q5, lower = q25, middle = median, 
+                       upper = q75, ymax = q95), stat = "identity") +
+      geom_point(aes(y = mean), shape = 15, color = "#0044C0") +
+      # geom_text(aes(y = mean), label = "(mean)", hjust = 0, nudge_x = 0.02) +
+      geom_label(x = 1.5, y = redu_y, fill = "#DDDDDD", vjust = "inward",
+                label = paste0("Mean Reduction = ", redu_val, "%")) +
       # Set title
-      labs(title = paste("Overall", titles_ratio[[p_type]]),
-           x = "Purifier Filter", y = name_map[[p_type]]) +
-      theme(legend.title=element_blank())
+      labs(title = paste("Overall", pollutant_map[pollutant],
+                         environment_map[env]),
+           x = "Purifier Filter", y = name_map[pollutant]) +
+      theme_light() +
+      theme(legend.position = "none")
+  
+  plot(new_plot)
+  legend("top", legend = c("Mean"), fill = c("#0044C0"), cex = 0.8)
 }
 ```
 
+## Plot indoor data boxplots
 ```{r}
-particulate_matter %>%
-  plot_raw("pm25")
+# PM 2.5
+pm_raw %>% custom_boxplot(pm_redu, "pm25", "indoor")
+# PM 10
+pm_raw %>% custom_boxplot(pm_redu, "pm10", "indoor")
+# UFP
+ufp_raw %>% custom_boxplot(ufp_redu, "concent", "indoor")
+# Black Carbon
+bc_raw %>% custom_boxplot(bc_redu, "uv_bc1", "indoor")
 ```
+
+
+## Plot I/O Ratio data boxplots
+```{r}
+# PM 2.5
+pm_raw %>% custom_boxplot(pm_redu, "pm25", "ratio")
+# PM 10
+pm_raw %>% custom_boxplot(pm_redu, "pm10", "ratio")
+# UFP
+ufp_raw %>% custom_boxplot(ufp_redu, "concent", "ratio")
+# Black Carbon
+bc_raw %>% custom_boxplot(bc_redu, "uv_bc1", "ratio")
+```
+
 
