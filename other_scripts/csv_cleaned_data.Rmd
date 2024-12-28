@@ -1,5 +1,5 @@
 # HAFTRAP Saving Cleaned Data as CSVs
-For hand-off, not to replace RData files in cleaned data. If running this script for the first time, create a folder called "clean_csv" in `other_scripts` (parent folder of this script).
+For hand-off, not to replace RData files in cleaned data. Creates files in `clean_csv` subfolder of `data_cleaned`.
 
 ## Set up
 ```{r}
@@ -67,9 +67,9 @@ gp_all <- modulair_olin %>%
 
 # Save data as CSVs
 ```{r}
-write_csv(pm_all, "other_scripts/clean_csv/clean_pm.csv")
-write_csv(ufp_all, "other_scripts/clean_csv/clean_ufp.csv")
-write_csv(gp_all, "other_scripts/clean_csv/clean_gp.csv")
-write_csv(bc_all, "other_scripts/clean_csv/clean_bc.csv")
+write_csv(pm_all, "data_cleaned/clean_csv/clean_pm.csv")
+write_csv(ufp_all, "data_cleaned/clean_csv/clean_ufp.csv")
+write_csv(gp_all, "data_cleaned/clean_csv/clean_gp.csv")
+write_csv(bc_all, "data_cleaned/clean_csv/clean_bc.csv")
 ```
 
