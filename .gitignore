@@ -7,3 +7,4 @@
 # Data folders (raw and cleaned)
 data_raw/
 data_cleaned/
+other_scripts/clean_csv/
