@@ -44,6 +44,8 @@ load(paste0(path_to_data, "cleaned_SCOPE_cpc.RData"))
 cpc_scope <- cpc_df
 load(paste0(path_to_data, "cleaned_Tufts_cpc.RData"))
 cpc_tufts <- cpc_df
+load(paste0(path_to_data, "cleaned_Olin_aethalometer.RData"))
+olin_aeth <- aethalometer_df
 
 # Combine all Modulair data
 modulair_all <- rbind(modulair_olin, modulair_scope)
@@ -100,27 +102,22 @@ legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"),
 
 
 ```{r}
-df <- particulate_matter %>% 
-  filter(environment == "indoor") %>%
-  mutate(hour = hour(date), 
-         case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>% 
-  group_by(hour, case) %>% 
-  summarize(mean_pm25 = mean(pm25),
-            sd_pm25 = sd(pm25),
-            count_pm25 = n()) %>%
-  mutate(interval = 1.96 * (sd_pm25 / sqrt(count_pm25)))
-
-df %>%
-  ggplot(aes(x = hour, y = mean_pm25, color = case)) + 
-  geom_line() +
-  geom_errorbar(aes(ymin = mean_pm25 - interval, ymax = mean_pm25 + interval))
-```
-
-
-```{r}
-ufp_brechtel %>%
+bc_plot <- olin_aeth %>%
   filter(environment == "indoor") %>%
   mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
-  timeVariation(pollutant = "concent", ylab = "UFP Count (ug/m3)", 
-                group = "case")
+  timeVariation(pollutant = "uv_bc1", ylab = "BC Conc. (ng/m3)", 
+                group = "case", local.tz = "America/New_York", plot = FALSE)
 ```
+
+```{r}
+bc_subplot <- bc_plot$plot$hour
+
+plot.new()
+plot(bc_subplot)
+
+title(main = expression("Mean Diurnal Indoor Black Carbon (UV)"), line = 3)
+legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+
