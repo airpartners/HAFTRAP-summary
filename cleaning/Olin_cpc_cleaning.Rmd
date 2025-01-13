@@ -129,7 +129,7 @@ include_case <- function(df, participant) {
 ```{r}
 case_df <- data.frame()
 
-for (participant in participant_ids) {
+for (participant in cpc_participants) {
   # Filter by date for off and on (see helper function)
   df <- include_case(all_df, participant)
   # Append to overall dataframe, removing readings from invalid times
