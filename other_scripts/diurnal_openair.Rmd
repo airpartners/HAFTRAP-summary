@@ -61,22 +61,54 @@ ufp_all <- rbind(ufp_brechtel, cpc_tufts)
 ```
 
 ```{r}
-pm_plot <- particulate_matter %>%
-  filter(environment == "indoor") %>%
+pm_plot_weekday <- particulate_matter %>%
+  filter(environment == "indoor", !(wday(date) %in% c(1, 7))) %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "case",
+                local.tz = "America/New_York", plot = FALSE)
+
+pm_plot_weekend <- particulate_matter %>%
+  filter(environment == "indoor", wday(date) %in% c(1, 7)) %>%
   mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
   timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "case",
                 local.tz = "America/New_York", plot = FALSE)
 ```
 ```{r}
-pm_subplot <- pm_plot$plot$hour
+pm_subplot <- pm_plot_weekday$plot$hour
 
 plot.new()
 plot(pm_subplot)
 
-title(main = expression("Mean Diurnal Indoor PM"[2.5]), line = 3)
+title(main = expression("Weekday Diurnal Indoor PM"[2.5]), line = 3)
 legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
        title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
 ```
+
+```{r}
+pm_subplot <- pm_plot_weekend$plot$hour
+
+plot.new()
+plot(pm_subplot)
+
+title(main = expression("Weekend Diurnal Indoor PM"[2.5]), line = 3)
+legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+```{r}
+ufp_plot_weekday <- ufp_all %>%
+  filter(environment == "indoor", !(wday(date) %in% c(1, 7))) %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "concent", ylab = "UFP Concentration (particles/cc)", group = "case",
+                local.tz = "America/New_York", plot = FALSE)
+
+ufp_plot_weekend <- ufp_all %>%
+  filter(environment == "indoor", wday(date) %in% c(1, 7)) %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "concent", ylab = "UFP Concentration (particles/cc)", group = "case",
+                local.tz = "America/New_York", plot = FALSE)
+```
+
 
 ```{r}
 ufp_plot <- ufp_all %>%
@@ -88,16 +120,82 @@ ufp_plot <- ufp_all %>%
 ```
 
 ```{r}
-ufp_subplot <- ufp_plot$plot$hour
+ufp_subplot <- ufp_plot_weekday$plot$hour
 
 plot.new()
 plot(ufp_subplot)
 
-title(main = expression("Mean Diurnal Indoor UFP Count"), line = 3)
+title(main = expression("Weekday Diurnal Indoor UFP Count"), line = 3)
 legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
        title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
 ```
 
+```{r}
+ufp_subplot <- ufp_plot_weekend$plot$hour
+
+plot.new()
+plot(ufp_subplot)
+
+title(main = expression("Weekend Diurnal Indoor UFP Count"), line = 3)
+legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+```{r}
+pm_plot <- particulate_matter %>%
+  filter(environment %in% c("indoor", "outdoor")) %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "environment",
+                local.tz = "America/New_York", plot = FALSE)
+```
+
+
+```{r}
+pm_subplot <- pm_plot$plot$hour
+
+plot.new()
+plot(pm_subplot)
+
+title(main = expression("Sham Purifier Diurnal PM"[2.5]), line = 3)
+legend("topleft", inset = 0.05, legend = c("Indoor", "Outdoor"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+```{r}
+pm_plot_sham <- particulate_matter %>%
+  filter(environment %in% c("indoor", "outdoor"), case == "off") %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "environment",
+                local.tz = "America/New_York", plot = FALSE)
+
+pm_plot_hepa <- particulate_matter %>%
+  filter(environment %in% c("indoor", "outdoor"), case == "on") %>%
+  mutate(case = recode_factor(case, "off" = "Sham", "on" = "HEPA")) %>%
+  timeVariation(pollutant = "pm25", ylab = "pm25 (ug/m3)", group = "environment",
+                local.tz = "America/New_York", plot = FALSE)
+```
+
+```{r}
+pm_subplot <- pm_plot_sham$plot$hour
+
+plot.new()
+plot(pm_subplot)
+
+title(main = expression("Sham Purifier Diurnal PM"[2.5]), line = 3)
+legend("topleft", inset = 0.05, legend = c("Indoor", "Outdoor"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
+
+```{r}
+pm_subplot <- pm_plot_hepa$plot$hour
+
+plot.new()
+plot(pm_subplot, ylim = c(0, 12))
+
+title(main = expression("HEPA Purifier Diurnal PM"[2.5]), line = 3)
+legend("topleft", inset = 0.05, legend = c("Indoor", "Outdoor"), 
+       title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
+```
 
 
 
@@ -120,4 +218,23 @@ legend("topleft", inset = 0.05, legend = c("Sham", "HEPA"),
        title = "Purifier type", fill = c("#F8766D", "#00BFC4"))
 ```
 
+
+```{r}
+particulate_matter %>% 
+  filter(participant_id == 44241, case == "on", environment == "indoor") %>%
+  ggplot(aes(x = date, y = pm25)) +
+    geom_line()
+```
+```{r}
+cpc_tufts %>% 
+  filter(participant_id == 300001) %>%
+  ggplot(aes(x = date, y = concent)) +
+    geom_point() +
+    facet_grid(vars(environment), vars(case), scales = "free")
+```
+
+
+```{r}
+
+```
 
