@@ -233,8 +233,3 @@ cpc_tufts %>%
     facet_grid(vars(environment), vars(case), scales = "free")
 ```
 
-
-```{r}
-
-```
-
