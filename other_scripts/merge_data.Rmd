@@ -1,0 +1,131 @@
+# Particulate Matter Data Collating
+This file combines and saves all data, and it also excludes any data that was deemed unwanted based on our data representation criteria.
+
+## Load Libraries
+```{r}
+library(tidyverse)
+```
+
+Set working directory
+```{r, setup, include=FALSE}
+working_dir <- "HAFTRAP-summary"
+knitr::opts_knit$set(root.dir = paste0("~/", working_dir))
+```
+
+Check for working directory
+```{r}
+# Check file path
+if (!endsWith(getwd(), working_dir)) {
+  stop("Incorrect working directory")
+}
+```
+
+## Participant IDs
+```{r}
+tufts_ids <- c(211002, 272001, 290001, 300001)
+scope_ids <- c(221001, 250001, 270001, 261001)
+```
+
+
+## Read data
+```{r}
+path_to_data <- "data_cleaned/"
+
+load(paste0(path_to_data, "cleaned_Olin_modpm.RData"))
+modpm_olin <- modpm_df
+
+load(paste0(path_to_data, "cleaned_Olin_modulair.RData"))
+modulair_olin <- modulair_df
+
+load(paste0(path_to_data, "cleaned_SCOPE_modulair.RData"))
+modulair_scope <- modulair_df
+
+load(paste0(path_to_data, "cleaned_Olin_cpc.RData"))
+cpc_olin <- cpc_df
+
+load(paste0(path_to_data, "cleaned_SCOPE_cpc.RData"))
+cpc_scope <- cpc_df
+
+load(paste0(path_to_data, "cleaned_Tufts_cpc.RData"))
+cpc_tufts <- cpc_df
+```
+
+## Combine data, save
+```{r}
+id_cols <- c("date", "participant_id", "environment", "case")
+particulate_matter_cols <- c(id_cols, "pm1", "pm25", "pm10", "pm1num")
+
+# Combine all particulate matter data
+modpm_all <- modulair_olin %>%
+  rbind(modulair_scope) %>% 
+  select(all_of(particulate_matter_cols)) %>%
+  rbind(modpm_olin)
+
+# Combine UFP data
+ufp_all <- cpc_olin %>% rbind(cpc_scope) %>% rbind(cpc_tufts)
+```
+
+```{r}
+# Save combined, unchanged data
+save(modpm_all, file = "cleaned_modpm.RData")
+save(ufp_all, file = "cleaned_ufp.RData")
+```
+
+```{r}
+# Exclude all Tufts IDs except 211002, all SCOPE, and 41211 (missing outdoor sham entirely)
+ids_to_exclude <- c(scope_ids, tufts_ids[tufts_ids != 211002], 41211)
+```
+
+```{r}
+# Filter out excluded IDs
+modpm_all_reduced <- modpm_all %>% filter(!(participant_id %in% ids_to_exclude))
+ufp_all_reduced <- ufp_all %>% filter(!(participant_id %in% ids_to_exclude))
+```
+
+```{r}
+# Calculate expected number of data points for monitoring period
+target_datapoints_1min <- 60 * 24 * 7
+target_datapoints_1sec <- 60 * 60 * 24 * 7
+```
+
+```{r}
+# Find IDs of participants with insufficient Mod-PM data
+modpm_insufficient <- modpm_all_reduced %>% 
+  filter(environment == "indoor") %>%
+  count(participant_id, case) %>% 
+  filter(n < target_datapoints_1min * 0.6)
+```
+
+```{r}
+# Exclude these participants, also truncate Mod-PM data to 1.2 times expected in a week
+modpm_all_filtered <- modpm_all_reduced %>%
+  filter(!(participant_id %in% unique(modpm_insufficient$participant_id))) %>%
+  group_by(participant_id, case, environment) %>%
+  filter(row_number() < target_datapoints_1min * 1.2) %>%
+  ungroup()
+```
+
+```{r}
+# Find IDs of participants with insufficient CPC data
+ufp_insufficient <- ufp_all_reduced %>% 
+  filter(environment == "indoor") %>%
+  count(participant_id, case) %>% 
+  filter(n < target_datapoints_1sec * 0.6)
+```
+
+
+```{r}
+# Exclude these participants, also truncate CPC data to 1.2 times expected in a week
+ufp_all_filtered <- ufp_all_reduced %>%
+  filter(!(participant_id %in% unique(ufp_insufficient$participant_id))) %>%
+  group_by(participant_id, case, environment) %>%
+  filter(row_number() < target_datapoints_1sec * 1.2) %>%
+  ungroup()
+```
+
+```{r}
+# Save filtered datasets
+save(modpm_all_filtered, file = "filtered_modpm.RData")
+save(ufp_all_filtered, file = "filtered_ufp.RData")
+```
+
